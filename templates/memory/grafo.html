@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Grafo — {{ nome_area }}{% endblock %}
+
+{% block content %}
+  <p class="muted"><a href="/workspace/app/">← Workspace</a></p>
+  <h1 style="margin-bottom:4px;">🕸️ Grafo de entidades — {{ nome_area }}</h1>
+  <div class="muted" style="margin-bottom:16px;">
+    {{ total_nos }} entidades · {{ total_arestas }} conexões (co-ocorrência em artigos).
+    Para o grafo pesado (comunidades, god nodes) rode <code>/graphify</code> sobre <code>artigos/</code>.
+  </div>
+
+  {% if total_nos %}
+    <div class="card" style="padding:0; overflow:hidden;">
+      <svg id="grafo" width="100%" height="520" style="display:block; background:#0d1016;"></svg>
+    </div>
+
+    <div class="card">
+      <div class="muted" style="margin-bottom:8px;">Entidades (por nº de artigos)</div>
+      {% for n in nos %}
+        <div style="font-size:13px; margin-bottom:4px;">
+          <span class="tag">{{ n.tipo }}</span> {{ n.nome }}
+          <span class="muted">· {{ n.artigos }} artigo{{ n.artigos|pluralize }}</span>
+        </div>
+      {% endfor %}
+    </div>
+
+    <script id="grafo-data" type="application/json">{{ grafo_json|safe }}</script>
+    <script>
+    (function () {
+      const data = JSON.parse(document.getElementById('grafo-data').textContent);
+      const svg = document.getElementById('grafo');
+      const W = svg.clientWidth || 760, H = 520, cx = W/2, cy = H/2, R = Math.min(W, H)/2 - 60;
+      const cores = {lei:'#6ea8fe', jurisprudencia:'#c792ea', conceito:'#4ade80',
+                     orgao:'#ffcb6b', pessoa:'#ff6b6b', outro:'#9aa4b2'};
+      const N = data.nodes.length;
+      const pos = {};
+      data.nodes.forEach((n, i) => {
+        const ang = (2*Math.PI*i)/N - Math.PI/2;
+        pos[n.id] = {x: cx + R*Math.cos(ang), y: cy + R*Math.sin(ang), n};
+      });
+      const maxPeso = Math.max(1, ...data.edges.map(e => e.peso));
+      let svgh = '';
+      data.edges.forEach(e => {
+        const a = pos[e.a], b = pos[e.b];
+        if (!a || !b) return;
+        const op = 0.15 + 0.55*(e.peso/maxPeso);
+        svgh += `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="#3a4256" stroke-opacity="${op}" stroke-width="${1+2*e.peso/maxPeso}"/>`;
+      });
+      const maxArt = Math.max(1, ...data.nodes.map(n => n.artigos));
+      data.nodes.forEach(n => {
+        const p = pos[n.id], r = 6 + 10*(n.artigos/maxArt), c = cores[n.tipo] || cores.outro;
+        const anchor = p.x < cx ? 'end' : 'start', dx = p.x < cx ? -(r+4) : (r+4);
+        svgh += `<circle cx="${p.x}" cy="${p.y}" r="${r}" fill="${c}" fill-opacity="0.85"/>`;
+        svgh += `<text x="${p.x+dx}" y="${p.y+4}" text-anchor="${anchor}" fill="#c9d1e0" font-size="11">${n.nome.replace(/&/g,'&amp;').replace(/</g,'&lt;')}</text>`;
+      });
+      svg.innerHTML = svgh;
+    })();
+    </script>
+  {% else %}
+    <div class="card muted">
+      Nenhuma entidade nesta área ainda. Abra um artigo e clique em “Extrair entidades”.
+    </div>
+  {% endif %}
+{% endblock %}

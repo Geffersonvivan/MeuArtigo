@@ -1,0 +1,353 @@
+{% load static %}<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<title>Meu Artigo</title>
+<meta name="viewport" content="width=1280">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&family=Source+Sans+3:wght@400;500;600&family=Source+Serif+4:ital,wght@0,400;0,500;0,600;1,400&family=Newsreader:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="{% static 'app.css' %}">
+<style>/* remove elementos só-protótipo (README manda) */ #screens-menu, #tweaks { display: none !important; }</style>
+</head>
+<body data-view="workspace">
+
+<!-- Tweaks defaults (rewritable) -->
+<script>
+window.__tweaks = /*EDITMODE-BEGIN*/{
+  "accent": "navy",
+  "typography": "plex",
+  "rewriteVariant": "anchored"
+}/*EDITMODE-END*/;
+</script>
+
+<!-- ============================================================
+     LANDING PAGE (estado DESLOGADO)
+     ============================================================ -->
+<div id="landing-view">
+  <div class="landing">
+
+    <!-- 1. TOPO -->
+    <header class="lp-header">
+      <div class="lp-brand"><span class="lp-brand-mark">¶</span> Meu Artigo</div>
+      <button class="lp-header-enter" data-open-login="signin">Entrar</button>
+    </header>
+
+    <!-- 2. HERO -->
+    <section class="lp-hero">
+      <div class="lp-container">
+        <h1 class="lp-hero-title">Escreva artigos sem repetir o que você já escreveu.</h1>
+        <p class="lp-hero-sub">Um ambiente de escrita com memória, controle de extensão e fontes verificadas.</p>
+        <button class="lp-hero-cta" data-open-login="signup">
+          Começar
+          <svg class="i" viewBox="0 0 24 24" style="width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+        </button>
+
+        <!-- Recorte estático do workspace -->
+        <div class="lp-shot">
+          <div class="lp-shot-chrome">
+            <div class="dots"><span></span><span></span><span></span></div>
+            <div class="addr">meuartigo.app/impulsionamento-eleitoral-em-redes-sociais</div>
+          </div>
+          <div class="lp-shot-body">
+            <!-- Preview do workspace preenchido por JS a partir do markup real -->
+            <div class="ws-preview" id="ws-preview-hero" aria-hidden="true"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. TRÊS COLUNAS -->
+    <section class="lp-three">
+      <div class="lp-container">
+        <div class="lp-three-grid">
+          <div>
+            <h2 class="lp-col-title">Edição por parágrafo</h2>
+            <p class="lp-col-body">Ajuste um trecho sem refazer o artigo. Você aceita ou descarta cada sugestão.</p>
+          </div>
+          <div>
+            <h2 class="lp-col-title">Memória entre artigos</h2>
+            <p class="lp-col-body">O sistema avisa quando você está repetindo algo que já publicou.</p>
+          </div>
+          <div>
+            <h2 class="lp-col-title">Fontes verificadas</h2>
+            <p class="lp-col-body">Nenhuma citação entra no texto sem ser conferida.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. BLOCO DE EXTENSÃO (com recorte do wizard) -->
+    <section class="lp-extension">
+      <div class="lp-container">
+        <div class="lp-ext-grid">
+          <div>
+            <div class="lp-ext-eyebrow">Antes de escrever</div>
+            <h2 class="lp-ext-title">Defina páginas, linhas, área e estilo — e a extensão do texto passa a ser sua.</h2>
+            <p class="lp-ext-body">Você decide o alvo antes da primeira palavra. O contador acompanha em tempo real. Nenhuma seção estoura sem você saber.</p>
+          </div>
+          <div class="lp-wizard-shot" id="wizard-preview-shot" aria-hidden="true">
+            <!-- preenchido por JS a partir do SCREENS.wizard -->
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. RODAPÉ -->
+    <footer class="lp-footer">
+      <div class="lp-foot-left">
+        <span class="lp-brand" style="font-size:13px"><span class="lp-brand-mark" style="font-size:15px">¶</span> Meu Artigo</span>
+        <span>© 2026</span>
+      </div>
+      <nav class="lp-foot-links">
+        <a href="#">Termos</a>
+        <a href="#">Privacidade</a>
+        <a href="#">Contato</a>
+      </nav>
+    </footer>
+
+  </div>
+</div>
+
+<!-- ============================================================
+     WORKSPACE (estado LOGADO)
+     ============================================================ -->
+<div class="app" id="workspace-view">
+
+  <!-- ========================= TOPBAR ========================= -->
+  <div class="topbar">
+    <div class="brand"><span class="brand-mark">¶</span> Meu Artigo</div>
+    <div class="doc-title">
+      <span class="name" id="doc-name">Impulsionamento eleitoral em redes sociais</span>
+      <span class="sep">·</span>
+      <span class="area">Direito Eleitoral</span>
+      <span class="status-pill draft" id="status-pill">Rascunho <span class="v" id="status-version">v2</span></span>
+    </div>
+    <div class="top-right">
+      <div class="session-cost"><span class="label">sessão</span>R$ 3,42</div>
+      <button class="icon-btn" id="btn-close-article" title="Fechar artigo">
+        <svg class="i" viewBox="0 0 24 24"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+        Fechar artigo
+      </button>
+      <button class="icon-btn" id="btn-export" title="Exportar">
+        <svg class="i" viewBox="0 0 24 24"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+        Exportar
+      </button>
+      <button class="icon-btn icon-only" title="Histórico" id="btn-history">
+        <svg class="i" viewBox="0 0 24 24"><path d="M3 12a9 9 0 109-9M3 12l3-3M3 12l3 3M12 7v5l3 2"/></svg>
+      </button>
+
+      <div class="user-wrap" id="user-wrap">
+        <button class="user-avatar" id="user-avatar" title="Menu do usuário">RS</button>
+        <div class="user-menu" role="menu">
+          <div class="user-name">Renato Salgado</div>
+          <div class="user-email">renato@salgado.adv.br</div>
+          <button role="menuitem">Ajustes</button>
+          <div class="sep"></div>
+          <button role="menuitem" class="logout" id="btn-logout">Sair</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================= MAIN ========================= -->
+  <div class="main">
+
+    <!-- ================= SIDEBAR ================= -->
+    <aside class="sidebar">
+      <div class="sidebar-head">
+        <button class="btn-new" id="btn-new-article">
+          <svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+          Novo artigo
+        </button>
+        <div class="search-wrap">
+          <svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          <input class="search" id="search" placeholder="Buscar tema, termo ou fonte…">
+        </div>
+      </div>
+
+      <div class="search-results" id="search-results"></div>
+
+      <div class="tree" id="tree">
+        <div class="tree-area">
+          <div class="tree-area-label">
+            <svg class="i" style="width:11px;height:11px" viewBox="0 0 24 24"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"/></svg>
+            Direito Eleitoral
+          </div>
+          <button class="tree-item active" data-article="a1">
+            <div class="t-title">Impulsionamento eleitoral em redes sociais</div>
+            <div class="t-meta"><span class="status-dot draft"></span>8 pág · rascunho · há 2 dias</div>
+          </button>
+          <button class="tree-item" data-article="a2">
+            <div class="t-title">Propaganda antecipada negativa</div>
+            <div class="t-meta"><span class="status-dot final"></span>5 pág · final · há 6 dias</div>
+          </button>
+          <button class="tree-item" data-article="a3">
+            <div class="t-title">Prestação de contas de campanha</div>
+            <div class="t-meta"><span class="status-dot review"></span>12 pág · em revisão · há 1 sem</div>
+          </button>
+          <button class="tree-item" data-article="a4">
+            <div class="t-title">Uso de IA em campanhas eleitorais</div>
+            <div class="t-meta"><span class="status-dot draft"></span>3 pág · rascunho · há 2 sem</div>
+          </button>
+        </div>
+      </div>
+
+      <div class="sidebar-foot">
+        <button class="pending-link" id="btn-sources-pending">
+          <svg class="i" style="width:12px;height:12px" viewBox="0 0 24 24"><path d="M12 9v4m0 4h.01M4.93 19h14.14a2 2 0 001.75-2.97l-7.07-12.5a2 2 0 00-3.5 0L3.18 16.03A2 2 0 004.93 19z"/></svg>
+          Fontes pendentes
+          <span class="pending-badge">3</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- ================= EDITOR ================= -->
+    <main class="editor">
+      <div class="final-banner" id="final-banner">
+        <svg class="i fb-icon" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+        <div class="fb-label"><b>Artigo final.</b> A edição está travada. Para alterar, crie uma nova versão.</div>
+        <button class="fb-reopen" id="btn-reopen">Reabrir para edição</button>
+      </div>
+      <div class="editor-inner">
+
+        <!-- ===== RÉGUA ===== -->
+        <div class="ruler" id="ruler">
+          <!-- preenchido por JS -->
+        </div>
+
+        <!-- ===== DOC ===== -->
+        <article class="doc" id="doc">
+          <!-- Seções injetadas por JS -->
+        </article>
+
+        <!-- ===== COLUNA DE AVISOS ===== -->
+        <div class="notes-col" id="notes-col">
+          <!-- preenchido por JS, posicionamento absoluto alinhado aos parágrafos -->
+        </div>
+
+      </div>
+    </main>
+
+    <!-- ================= CONTEXT ================= -->
+    <aside class="context">
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-tab="pipeline">Pipeline</button>
+        <button class="tab" data-tab="fontes">Fontes</button>
+        <button class="tab" data-tab="memoria">Memória</button>
+      </div>
+
+      <!-- Pipeline (agrupada por papel) -->
+      <div class="tab-panel active" data-panel="pipeline" id="pipeline-panel">
+        <!-- preenchido por JS: renderPipeline() -->
+      </div>
+
+      <!-- Fontes -->
+      <div class="tab-panel" data-panel="fontes">
+        <div class="src-item duvidosa">
+          <div class="src-title">REspe nº 0600xxx-xx.2020.6.16.0000</div>
+          <div class="src-meta"><span class="badge duvidosa">Duvidosa</span> jurisprudência · TSE</div>
+          <button class="decide" data-open="sources-view">Decidir</button>
+        </div>
+        <div class="src-item duvidosa">
+          <div class="src-title">Blog jurídico — "Tudo sobre impulsionamento"</div>
+          <div class="src-meta"><span class="badge nao-loc">Não localizada</span> site</div>
+          <button class="decide" data-open="sources-view">Decidir</button>
+        </div>
+        <div class="src-item">
+          <div class="src-title">Lei nº 9.504/1997</div>
+          <div class="src-meta"><span class="badge verificada">Verificada</span> lei federal</div>
+        </div>
+        <div class="src-item">
+          <div class="src-title">Resolução TSE nº 23.610/2019</div>
+          <div class="src-meta"><span class="badge verificada">Verificada</span> norma</div>
+        </div>
+        <div class="src-item">
+          <div class="src-title">Lei nº 13.488/2017</div>
+          <div class="src-meta"><span class="badge verificada">Verificada</span> lei federal</div>
+        </div>
+      </div>
+
+      <!-- Memória -->
+      <div class="tab-panel" data-panel="memoria">
+        <div class="mem-card">
+          <div class="m-title">Propaganda antecipada negativa</div>
+          <div class="m-summary">Você defendeu que o § 3º do art. 36-A cria zona cinzenta e o TSE ainda oscila entre critério objetivo e finalístico.</div>
+          <button class="m-ref">Referenciar em vez de repetir</button>
+        </div>
+        <div class="mem-card">
+          <div class="m-title">Prestação de contas de campanha</div>
+          <div class="m-summary">Argumento central: gasto com impulsionamento entra em "recursos financeiros" e não em "estimáveis em dinheiro".</div>
+          <button class="m-ref">Referenciar em vez de repetir</button>
+        </div>
+        <div class="mem-card">
+          <div class="m-title">Uso de IA em campanhas eleitorais</div>
+          <div class="m-summary">Você já tratou da Res. TSE 23.732/2024 no contexto de deepfake — reaproveitar apenas a nota sobre identificação de responsável.</div>
+          <button class="m-ref">Referenciar em vez de repetir</button>
+        </div>
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- ========================= MENU DE TELAS ========================= -->
+  <div class="screens-menu" id="screens-menu">
+    <button class="screens-toggle" id="screens-toggle">
+      <svg class="i" style="width:12px;height:12px" viewBox="0 0 24 24"><rect x="3" y="4" width="7" height="7" rx="1"/><rect x="14" y="4" width="7" height="7" rx="1"/><rect x="3" y="15" width="7" height="6" rx="1"/><rect x="14" y="15" width="7" height="6" rx="1"/></svg>
+      Telas do protótipo
+    </button>
+    <div class="screens-list">
+      <button data-screen="workspace"><span class="num">1</span> Workspace</button>
+      <button data-screen="wizard"><span class="num">2</span> Wizard de criação</button>
+      <button data-screen="structure"><span class="num">3</span> Gate de estrutura</button>
+      <button data-screen="sources"><span class="num">4</span> Painel de fontes</button>
+      <button data-screen="diff"><span class="num">5</span> Comparação de versões</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- ========================= MODAIS / TELAS 2-5 (stubs por enquanto) ========================= -->
+<div class="modal-back" id="modal-back">
+  <div class="modal" id="modal">
+    <!-- injetado por JS -->
+  </div>
+</div>
+
+<!-- ========================= TWEAKS PANEL ========================= -->
+<div class="tweaks" id="tweaks">
+  <div class="tweaks-head">
+    <span>Tweaks</span>
+    <button class="close" id="tweaks-close" style="font-size:14px;color:var(--text-faint)">×</button>
+  </div>
+  <div class="tweaks-body">
+    <div class="tweak-group">
+      <div class="t-label">Cor de acento</div>
+      <div class="tweak-options" data-tweak="accent">
+        <button class="tweak-opt" data-val="navy">Navy</button>
+        <button class="tweak-opt" data-val="graphite">Grafite</button>
+      </div>
+    </div>
+    <div class="tweak-group">
+      <div class="t-label">Par tipográfico</div>
+      <div class="tweak-options" data-tweak="typography">
+        <button class="tweak-opt" data-val="plex">Plex</button>
+        <button class="tweak-opt" data-val="source">Source</button>
+        <button class="tweak-opt" data-val="editorial">Editorial</button>
+      </div>
+    </div>
+    <div class="tweak-group">
+      <div class="t-label">Balão de reescrita</div>
+      <div class="tweak-options" data-tweak="rewriteVariant">
+        <button class="tweak-opt" data-val="anchored">Ancorado</button>
+        <button class="tweak-opt" data-val="side">Lateral</button>
+        <button class="tweak-opt" data-val="overlay">Overlay</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>window.__DATA__ = {{ data_json|default:"null"|safe }};</script>
+<script src="{% static 'app.js' %}"></script>
+</body>
+</html>
