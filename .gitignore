@@ -1,0 +1,35 @@
+# === Segredos ===
+.env
+*.pem
+
+# === Python ===
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+
+# === Django ===
+*.log
+db.sqlite3
+db.sqlite3-journal
+/staticfiles/
+/media/
+
+# === Artigos físicos (renderizados do banco; o banco é a fonte da verdade) ===
+/artigos/*
+!/artigos/.gitkeep
+
+# === Testes / cobertura / segurança ===
+.pytest_cache/
+.coverage
+htmlcov/
+bandit-report.json
+
+# === Ferramentas / OS ===
+.DS_Store
+.idea/
+.vscode/
+*.swp
