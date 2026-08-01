@@ -273,6 +273,26 @@ function renderDoc(){
   const doc = $('#doc');
   doc.innerHTML = '';
 
+  // Barra "Redigir todas" — só aparece quando há seção(ões) sem conteúdo
+  const totalSec = article.sections.length;
+  const feitas = article.sections.filter(s => s.paragraphs.length).length;
+  const vazias = totalSec - feitas;
+  if (vazias > 0 && totalSec > 0){
+    const bar = el(`
+      <div class="write-all-bar" id="write-all-bar">
+        <div class="wa-info">
+          <span class="wa-label"><span class="wa-done">${feitas}</span> de ${totalSec} seções redigidas</span>
+          <div class="wa-progress"><div class="wa-fill" style="width:${Math.round(feitas/totalSec*100)}%"></div></div>
+        </div>
+        <button class="btn-primary" data-act="write-all" data-total="${totalSec}">
+          <svg class="i" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          Redigir todas (${vazias})
+        </button>
+      </div>
+    `);
+    doc.appendChild(bar);
+  }
+
   article.sections.forEach((sec, sIdx) => {
     const secEl = el(`
       <section class="section" id="${sec.id}" data-target="${sec.target}">
@@ -358,6 +378,27 @@ function renderDoc(){
       `);
       secEl.appendChild(diffSlot);
     });
+
+    // Seção ainda sem conteúdo → botão para redigir sob demanda (Redator, streaming)
+    if (!sec.paragraphs.length){
+      const secPk = String(sec.id).replace(/^s/, '');
+      const writeSlot = el(`
+        <div class="section-empty" data-for="${sec.id}">
+          <div class="se-preview"></div>
+          <div class="se-foot">
+            <span class="rewrite-hint role-hint">
+              <span class="rh-dot redator"></span>
+              Redator · <span class="rh-model">${state.models.redator}</span> · escreve esta seção
+            </span>
+            <button class="btn-primary" data-act="write-section" data-sec="${secPk}">
+              <svg class="i" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+              Redigir seção
+            </button>
+          </div>
+        </div>
+      `);
+      secEl.appendChild(writeSlot);
+    }
 
     doc.appendChild(secEl);
   });
@@ -528,6 +569,20 @@ function initParagraphInteractions(){
       return;
     }
 
+    // Redigir seção inteira (seção ainda vazia)
+    const writeBtn = e.target.closest('[data-act="write-section"]');
+    if (writeBtn){
+      writeSection(writeBtn.dataset.sec, writeBtn);
+      return;
+    }
+
+    // Redigir TODAS as seções vazias, em sequência
+    const writeAllBtn = e.target.closest('[data-act="write-all"]');
+    if (writeAllBtn){
+      writeAllSections(writeAllBtn);
+      return;
+    }
+
     // Fechar balão
     const closeBtn = e.target.closest('.rewrite .close');
     if (closeBtn){
@@ -686,6 +741,76 @@ function runRewrite(){
   state.suggestion = suggestion;
   positionMarginNotes();
   diffEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// Faz o streaming da redação de UMA seção para dentro do seu preview (Redator).
+// NÃO recarrega — resolve para true (persistiu) ou false (erro). Reusado tanto pelo
+// "Redigir seção" (individual) quanto pelo "Redigir todas" (em sequência).
+async function streamSectionInto(secPk, btn){
+  const slot = btn.closest('.section-empty');
+  const preview = slot ? slot.querySelector('.se-preview') : null;
+  if (!preview) return false;
+  slot.classList.add('writing');
+  preview.textContent = '';
+  let acc = '';
+  try {
+    const modelo = (window.__DATA__ && window.__DATA__.models) ? window.__DATA__.models.redator : null;
+    const resp = await fetch('/workspace/section/' + secPk + '/write/', {
+      method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken':getCSRF()},
+      body: JSON.stringify({ model: modelo })
+    });
+    if (!resp.ok || !resp.body){ preview.textContent = '⚠️ Falha ao redigir a seção.'; slot.classList.remove('writing'); return false; }
+    const reader = resp.body.getReader(), dec = new TextDecoder(); let buf = '';
+    while (true){
+      const r = await reader.read(); if (r.done) break;
+      buf += dec.decode(r.value, {stream:true});
+      const parts = buf.split('\n\n'); buf = parts.pop();
+      for (let i=0;i<parts.length;i++){
+        const line = parts[i].replace(/^data: /, '').trim(); if (!line) continue;
+        let ev; try { ev = JSON.parse(line); } catch(_){ continue; }
+        if (ev.delta){ acc += ev.delta; preview.textContent = acc; }
+        else if (ev.error){ preview.textContent = '⚠️ ' + ev.error; slot.classList.remove('writing'); return false; }
+        else if (ev.done){ return true; }
+      }
+    }
+    return true;  // stream terminou sem "done" explícito, mas sem erro
+  } catch(e){ preview.textContent = '⚠️ Falha na conexão.'; slot.classList.remove('writing'); return false; }
+}
+
+// "Redigir seção" (individual): streama e, ao concluir, recarrega para renderizar
+// os parágrafos reais (refs resolvidas, régua, avisos de margem).
+async function writeSection(secPk, btn){
+  const label = btn.innerHTML;
+  btn.disabled = true; btn.textContent = 'Redigindo…';
+  const ok = await streamSectionInto(secPk, btn);
+  if (ok){ location.reload(); }
+  else { btn.disabled = false; btn.innerHTML = label; }
+}
+
+// "Redigir todas": percorre as seções vazias em sequência, com barra de progresso.
+// Cada seção é uma requisição curta (sem risco de timeout); recarrega só no fim.
+async function writeAllSections(triggerBtn){
+  const btns = Array.prototype.slice.call(
+    document.querySelectorAll('#workspace-view [data-act="write-section"]'));
+  if (!btns.length) return;
+  const total = parseInt((triggerBtn && triggerBtn.dataset.total) || btns.length, 10);
+  const bar = $('#write-all-bar');
+  const fill = bar ? $('.wa-fill', bar) : null;
+  const doneEl = bar ? $('.wa-done', bar) : null;
+  const feitasIniciais = total - btns.length;
+  if (triggerBtn){ triggerBtn.disabled = true; triggerBtn.textContent = 'Redigindo…'; }
+
+  let feitas = feitasIniciais;
+  for (let i=0;i<btns.length;i++){
+    const b = btns[i];
+    b.disabled = true; b.textContent = 'Redigindo…';
+    if (triggerBtn) triggerBtn.textContent = `Redigindo ${i+1}/${btns.length}…`;
+    const ok = await streamSectionInto(b.dataset.sec, b);
+    if (ok) feitas++;
+    if (doneEl) doneEl.textContent = feitas;
+    if (fill) fill.style.width = Math.round(feitas/total*100) + '%';
+  }
+  location.reload();
 }
 
 function acceptSuggestion(){
@@ -1140,15 +1265,12 @@ const SCREENS = {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px 20px">
         <label class="fld">
           <div class="fld-label">Assunto</div>
-          <input class="fld-input" value="Impulsionamento eleitoral em redes sociais"/>
+          <input class="fld-input" data-wz="assunto" placeholder="Ex: Impulsionamento eleitoral em redes sociais"/>
         </label>
         <label class="fld">
           <div class="fld-label">Área</div>
-          <select class="fld-input">
-            <option>Direito Eleitoral</option>
-            <option>Direito Constitucional</option>
-            <option>Direito Administrativo</option>
-          </select>
+          <input class="fld-input" data-wz="area" list="wz-areas" placeholder="Ex: Direito Eleitoral"/>
+          <datalist id="wz-areas" data-areas></datalist>
         </label>
         <label class="fld" style="grid-column:1/-1">
           <div class="fld-label">Tese em uma frase <span class="fld-hint">(opcional)</span></div>
@@ -1156,11 +1278,11 @@ const SCREENS = {
         </label>
         <label class="fld">
           <div class="fld-label">Nº de páginas</div>
-          <input class="fld-input" type="number" value="8" min="1"/>
+          <input class="fld-input" data-wz="paginas" type="number" value="5" min="1"/>
         </label>
         <label class="fld">
           <div class="fld-label">Linhas por página</div>
-          <input class="fld-input" type="number" value="30" min="10"/>
+          <input class="fld-input" data-wz="linhas" type="number" value="30" min="10"/>
         </label>
         <label class="fld">
           <div class="fld-label">Estilo</div>
@@ -1212,7 +1334,7 @@ const SCREENS = {
       </div>
     </div>
     <div class="modal-foot">
-      <span class="meta">Meta: 8 páginas × 30 linhas = <b>240 linhas</b> (~3.600 palavras)</span>
+      <span class="meta" id="wz-meta">Meta: 5 páginas × 30 linhas = <b>150 linhas</b> (~2.250 palavras)</span>
       <div class="actions">
         <button class="btn-ghost" data-close>Cancelar</button>
         <button class="btn-primary" data-next-wizard>Continuar</button>
@@ -2123,11 +2245,38 @@ function wireWizardStep2(params){
 }
 
 function wireWizard(){
-  const nextBtn = $('[data-next-wizard]');
+  // IMPORTANTE: escopar ao #modal. O preview da landing clona o wizard, então há
+  // um segundo [data-next-wizard]/[data-wz]/#wz-meta no DOM (escondido) — sem o
+  // escopo, os listeners prendiam no clone e o "Continuar" não respondia.
+  const modal = $('#modal');
+  const nextBtn = $('[data-next-wizard]', modal);
   if (!nextBtn) return;
+
+  // Rodapé "Meta" recalcula ao vivo conforme páginas × linhas mudam
+  const metaEl = $('#wz-meta', modal);
+  const pag = $('[data-wz="paginas"]', modal);
+  const lin = $('[data-wz="linhas"]', modal);
+  const recalcMeta = () => {
+    if (!metaEl) return;
+    const np = parseInt((pag && pag.value) || '0', 10) || 0;
+    const nl = parseInt((lin && lin.value) || '0', 10) || 0;
+    const linhas = np * nl;
+    const palavras = Math.round(linhas * 15 / 100) * 100;  // ~15 palavras/linha
+    metaEl.innerHTML = `Meta: ${np} páginas × ${nl} linhas = <b>${linhas} linhas</b> (~${palavras.toLocaleString('pt-BR')} palavras)`;
+  };
+  if (pag) pag.addEventListener('input', recalcMeta);
+  if (lin) lin.addEventListener('input', recalcMeta);
+
+  // Área: texto livre com sugestões das áreas já usadas (evita fragmentar por digitação).
+  // Preenche todos os <datalist data-areas> (inclui o do clone da landing, por segurança).
+  const areas = (window.__DATA__ && Array.isArray(window.__DATA__.areas)) ? window.__DATA__.areas : [];
+  if (areas.length){
+    const opts = areas.map(a => `<option value="${String(a).replace(/"/g, '&quot;')}"></option>`).join('');
+    document.querySelectorAll('datalist[data-areas]').forEach(dl => { dl.innerHTML = opts; });
+  }
+
   const real = (typeof window !== 'undefined' && window.__DATA__);
   nextBtn.addEventListener('click', () => {
-    const modal = $('#modal');
     if (real){
       var params = {
         assunto: ((wzField('Assunto')||{}).value || '').trim(),
@@ -2136,9 +2285,10 @@ function wireWizard(){
         num_paginas: (wzField('Nº de páginas')||{}).value || '1',
         num_linhas: (wzField('Linhas')||{}).value || '10',
         estilo: (wzField('Estilo')||{}).value || '',
-        profundidade: (document.querySelector('input[name="depth"]:checked')||{}).value || 'frases'
+        profundidade: (modal.querySelector('input[name="depth"]:checked')||{}).value || 'frases'
       };
       if (!params.assunto){ showToast('Informe o assunto.'); return; }
+      if (!params.area.trim()){ showToast('Informe a área (ex.: Direito Eleitoral).'); return; }
       window.__wizardParams = params;
       modal.innerHTML = SCREENS.wizardStep2;
       modal.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', closeModal));
@@ -2220,6 +2370,8 @@ function hydrateSourcesReal(){
       body: a === 'verificar' ? null : JSON.stringify({ decisao: a }) })
       .then(function(r){ return r.json(); }).then(function(d){ btn.disabled=false;
         s.badgeClass = d.badgeClass; s.badgeLabel = d.badgeLabel; s.decide = d.decide;
+        // recalcula o contador de "fontes a decidir" para o checklist de fechamento
+        state.sourcesToDecide = srcs.filter(function(x){ return x.decide; }).length;
         hydrateSourcesReal();
         if (window.__refreshFontes) window.__refreshFontes();
         showToast('Fonte: ' + d.badgeLabel);
@@ -2293,6 +2445,14 @@ function initMarginActions(){
       const note = ignore.closest('.margin-note');
       const nid = note.dataset.nid;
       state.ignoredNotes.add(nid);
+      // Persiste no banco (modo real) para o "Ignorar" sobreviver ao reload
+      if (window.__DATA__ && note.dataset.pid){
+        const ppk = String(note.dataset.pid).replace(/^p/, '');
+        fetch('/workspace/paragraph/' + ppk + '/ignore-note/', {
+          method: 'POST', headers: {'Content-Type':'application/json','X-CSRFToken':getCSRF()},
+          body: JSON.stringify({ note_id: nid, ignore: true })
+        }).catch(() => {});
+      }
       note.style.transition = 'opacity .2s, transform .2s';
       note.style.opacity = '0';
       note.style.transform = 'translateX(20px)';
@@ -2455,6 +2615,11 @@ function goToWorkspace(){
   // Fecha modais/menus
   closeLoginModal();
   closeUserMenu();
+  // Desmonta os previews da landing: o clone do workspace só pode existir enquanto a
+  // landing está aberta — assim ele NUNCA coexiste com o workspace ativo e não há
+  // colisão de queries (por classe/atributo) com os elementos reais.
+  const hero = $('#ws-preview-hero'); if (hero){ hero.innerHTML = ''; delete hero.dataset.filled; }
+  const wiz = $('#wizard-preview-shot'); if (wiz){ wiz.innerHTML = ''; delete wiz.dataset.filled; }
   document.body.dataset.view = 'workspace';
   // Recalcula altura do app agora que o workspace ficou visível
   setAppHeight();
@@ -2471,6 +2636,7 @@ function goToLanding(){
   closeModal();          // fecha modal de fechamento/wizard se estiver aberto
   closeLoginModal();
   closeUserMenu();
+  populateLandingPreviews();  // constrói o preview só agora (lazy), ao entrar na landing
   document.body.dataset.view = 'landing';
   // scroll da landing volta pro topo
   window.scrollTo({ top: 0 });
@@ -2596,8 +2762,12 @@ function populateLandingPreviews(){
     const clone = $('#workspace-view').cloneNode(true);
     clone.removeAttribute('id');
     clone.classList.remove('app');
-    // Neutraliza IDs e formulários dentro do clone para não colidir com o real
+    // Neutraliza IDs E atributos interativos do clone (é só visual). Sem esses hooks,
+    // as queries do app — openRewrite, etc. — deixam de casar com o clone escondido.
     clone.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
+    clone.querySelectorAll('[data-for],[data-act],[data-sec],[data-pid],[name],[list]').forEach(el => {
+      ['data-for', 'data-act', 'data-sec', 'data-pid', 'name', 'list'].forEach(a => el.removeAttribute(a));
+    });
     // O clone precisa ser posicionado no topo com display: flex
     clone.style.cssText = 'position:absolute; inset:0; display:flex; flex-direction:column;';
     // Abrir o balão de reescrita no preview:
@@ -2623,12 +2793,18 @@ function populateLandingPreviews(){
       }
     }
     heroSlot.appendChild(clone);
+    heroSlot.dataset.filled = '1';  // evita empilhar clones em visitas repetidas à landing
   }
 
   // Preview do wizard: monta um "modal" achatado sem backdrop
   const wizardSlot = $('#wizard-preview-shot');
   if (wizardSlot && !wizardSlot.dataset.filled){
     wizardSlot.innerHTML = SCREENS.wizard;
+    // Preview inerte: remove IDs e hooks para não duplicar #wz-meta/[data-wz]/[data-next-wizard]
+    wizardSlot.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
+    wizardSlot.querySelectorAll('[data-next-wizard],[data-wz],[data-areas],[name],[list]').forEach(el => {
+      ['data-next-wizard', 'data-wz', 'data-areas', 'name', 'list'].forEach(a => el.removeAttribute(a));
+    });
     wizardSlot.dataset.filled = '1';
     // O modal em SCREENS.wizard começa com .modal-head — o wrapper .lp-wizard-shot
     // já tem borda e background que substituem o .modal externo.
@@ -2662,7 +2838,9 @@ function initUserMenuActions(){
 const originalBoot = boot;
 boot = function(){
   originalBoot();
-  populateLandingPreviews();
+  // NÃO construir o preview da landing aqui: ele clona o #workspace-view e o clone
+  // (escondido) poluía as queries do app. Agora é lazy — só quando a landing abre.
+  if (document.body.dataset.view === 'landing') populateLandingPreviews();
   initLandingActions();
   initUserMenuActions();
 };

@@ -163,6 +163,8 @@ class Paragraph(models.Model):
     ordem = models.PositiveIntegerField("ordem", default=0)
     texto = models.TextField("texto", blank=True)
     locked = models.BooleanField("travado", default=False)
+    # ids de avisos de margem (ex.: "ns-p58", "gl-p58-JE") que o autor dispensou.
+    avisos_ignorados = models.JSONField("avisos ignorados", default=list, blank=True)
     criado_em = models.DateTimeField("criado em", auto_now_add=True)
     atualizado_em = models.DateTimeField("atualizado em", auto_now=True)
 

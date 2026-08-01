@@ -180,44 +180,52 @@ def _gerar_estrutura(article):
     article_services.sincronizar_disco(article)
 
 
-def _gerar_conteudo(article, profundidade):
-    """Após a estrutura: Perplexity(pesquisa→fontes) + Redator(Sonnet) escreve os
-    parágrafos de cada seção (reconecta o pipeline ao modelo Section/Paragraph)."""
-    if profundidade == "esqueleto":
-        return
-    from apps.articles.models import Paragraph
+def _ensure_pesquisa(article) -> str:
+    """Roda a pesquisa (Perplexity → fontes verificadas) UMA vez por artigo.
+    Devolve o texto de apoio (vazio se já rodou antes ou se falhar)."""
     from apps.llm.prompts import build_pesquisa_prompt
     from apps.memory.sources import criar_referencias_de_fontes
     from apps.memory.verify import verificar_pendentes
-
-    pesquisa_txt = ""
+    if article.llm_calls.filter(papel=Papel.PESQUISA).exists():
+        return ""  # já pesquisamos este artigo antes
     try:
         ppx = get_provider("perplexity")
         s, u = build_pesquisa_prompt(assunto=article.assunto, area=article.area)
         pesq = ppx.generate(system=s, prompt=u, max_tokens=1200, search_recency="year")
-        LLMCall.objects.create(article=article, papel=Papel.PESQUISA, provider=pesq.provider,
-                               model=pesq.model, input_tokens=pesq.input_tokens,
-                               output_tokens=pesq.output_tokens, cost_usd=pesq.cost_usd, ok=True)
-        criar_referencias_de_fontes(article, pesq.sources)
-        verificar_pendentes(article)
-        pesquisa_txt = pesq.text[:1500]
     except LLMProviderError:
-        pass
+        return ""
+    LLMCall.objects.create(article=article, papel=Papel.PESQUISA, provider=pesq.provider,
+                           model=pesq.model, input_tokens=pesq.input_tokens,
+                           output_tokens=pesq.output_tokens, cost_usd=pesq.cost_usd, ok=True)
+    criar_referencias_de_fontes(article, pesq.sources)
+    verificar_pendentes(article)
+    return pesq.text[:1500]
 
+
+def _redacao_prompts(article, sec, pesquisa_txt: str = "", n_paras: int = 2):
+    """(system, user) para o Redator escrever UMA seção, citando só fontes verificadas."""
     refs_ok = list(article.references.filter(verificada="ok"))
     refs_lst = "\n".join(f'- [[ref:{r.pk}]] {r.titulo}' for r in refs_ok) or "(nenhuma)"
-    n = 2 if profundidade == "completo" else 1
-    instr = ("Escreva apenas a frase-guia inicial de cada parágrafo (1 frase)."
-             if profundidade == "frases" else f"Escreva {n} parágrafos desenvolvidos.")
     system = ("Você é o Redator: escreve UMA seção de artigo jurídico. Cite fontes apenas via "
-              "[[ref:ID]] usando os IDs fornecidos; não invente citações. " + instr +
-              " Português do Brasil; devolva só o corpo (parágrafos separados por linha em branco), "
-              "sem repetir o título da seção.")
+              "[[ref:ID]] usando os IDs fornecidos; não invente citações. "
+              f"Escreva {n_paras} parágrafos desenvolvidos. Português do Brasil; devolva só o corpo "
+              "(parágrafos separados por linha em branco), sem repetir o título da seção.")
+    user = (f"SEÇÃO: {sec.titulo}\nO que cobrir: {sec.resumo}\nMeta: ~{sec.meta_linhas} linhas.\n"
+            f"FONTES VERIFICADAS:\n{refs_lst}\n"
+            + (f"\nPESQUISA DE APOIO:\n{pesquisa_txt}\n" if pesquisa_txt else ""))
+    return system, user
+
+
+def _gerar_conteudo(article, profundidade):
+    """Gera o conteúdo de TODAS as seções em lote. O fluxo padrão do wizard é sob
+    demanda (section_write); esta função existe para geração em bloco quando pedida."""
+    if profundidade in ("skeleton", "esqueleto"):
+        return
+    pesquisa_txt = _ensure_pesquisa(article)
+    n = 2 if profundidade == "completo" else 1
     claude = get_provider("anthropic")
     for sec in article.sections.all():
-        user = (f"SEÇÃO: {sec.titulo}\nO que cobrir: {sec.resumo}\nMeta: ~{sec.meta_linhas} linhas.\n"
-                f"FONTES VERIFICADAS:\n{refs_lst}\n"
-                + (f"\nPESQUISA DE APOIO:\n{pesquisa_txt}\n" if pesquisa_txt else ""))
+        system, user = _redacao_prompts(article, sec, pesquisa_txt, n_paras=n)
         try:
             res = claude.generate(system=system, prompt=user, max_tokens=1500,
                                   model=settings.MODELO_REDATOR, thinking=False)
@@ -288,12 +296,18 @@ def workspace_create(request):
     if p.get("tese"):
         art.contexto = p["tese"]
         art.save(update_fields=["contexto", "atualizado_em"])
+    aviso = None
     try:
+        # Só a estrutura (rápido). O conteúdo é redigido seção a seção, sob demanda,
+        # via section_write — evita a espera de 60-80s e o risco de timeout.
         _gerar_estrutura(art)
-        _gerar_conteudo(art, (p.get("profundidade") or "esqueleto"))
-    except Exception as exc:  # artigo é criado mesmo se a geração falhar
-        logger.warning("Geração falhou para o artigo %s: %s", art.pk, exc)
-    return JsonResponse({"pk": art.pk, "url": f"/workspace/app/{art.pk}/"})
+    except Exception as exc:  # artigo é criado mesmo se a estrutura falhar
+        logger.warning("Geração de estrutura falhou para o artigo %s: %s", art.pk, exc)
+        aviso = "Não consegui montar a estrutura automaticamente. Adicione as seções manualmente."
+    payload = {"pk": art.pk, "url": f"/workspace/app/{art.pk}/"}
+    if aviso:
+        payload["aviso"] = aviso
+    return JsonResponse(payload)
 
 
 def article_snapshots(request, pk):
@@ -455,6 +469,82 @@ def paragraph_rewrite(request, pk):
     resp["Cache-Control"] = "no-cache"
     resp["X-Accel-Buffering"] = "no"
     return resp
+
+
+def section_write(request, pk):
+    """Redige UMA seção sob demanda com o Redator (SSE). Substitui os parágrafos
+    existentes da seção. A pesquisa (fontes) roda uma única vez, na 1ª seção."""
+    from apps.articles.models import Section
+    sec = get_object_or_404(Section, pk=pk)
+    article = sec.article
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        payload = {}
+    _ALLOWED = {"claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"}
+    modelo = payload.get("model") if payload.get("model") in _ALLOWED else None
+    modelo = modelo or getattr(settings, "MODELO_REDATOR", "claude-sonnet-5")
+
+    def sse():
+        try:
+            pesquisa_txt = _ensure_pesquisa(article)
+        except Exception as exc:  # pesquisa é best-effort; segue sem ela
+            logger.warning("Pesquisa falhou p/ artigo %s: %s", article.pk, exc)
+            pesquisa_txt = ""
+        system, user = _redacao_prompts(article, sec, pesquisa_txt, n_paras=2)
+        provider = get_provider("anthropic")
+        holder: dict = {}
+        try:
+            for pedaco in provider.stream_generate(
+                system=system, prompt=user, max_tokens=1500, model=modelo,
+                on_done=lambda r: holder.update(res=r),
+            ):
+                yield f"data: {json.dumps({'delta': pedaco})}\n\n"
+        except LLMProviderError as exc:
+            yield f"data: {json.dumps({'error': str(exc)})}\n\n"
+            return
+        res = holder.get("res")
+        texto = (res.text if res else "").strip()
+        paras = [p.strip() for p in texto.split("\n\n") if p.strip()]
+        if res and paras:
+            LLMCall.objects.create(
+                article=article, papel=Papel.REDACAO, provider=res.provider, model=res.model,
+                input_tokens=res.input_tokens, output_tokens=res.output_tokens,
+                cost_usd=res.cost_usd, ok=True,
+            )
+            sec.paragraphs.all().delete()
+            for i, ptxt in enumerate(paras):
+                Paragraph.objects.create(section=sec, ordem=i, texto=ptxt)
+            article_services.sincronizar_disco(article)
+        yield "data: " + json.dumps({"done": True, "count": len(paras)}) + "\n\n"
+
+    resp = StreamingHttpResponse(sse(), content_type="text/event-stream")
+    resp["Cache-Control"] = "no-cache"
+    resp["X-Accel-Buffering"] = "no"
+    return resp
+
+
+@require_POST
+def paragraph_ignore_note(request, pk):
+    """Persiste (ou remove) a dispensa de um aviso de margem de um parágrafo.
+    Assim o "Ignorar" sobrevive ao reload (some o aviso E o sublinhado ondulado)."""
+    para = get_object_or_404(Paragraph, pk=pk)
+    try:
+        payload = json.loads(request.body or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "payload inválido"}, status=400)
+    note_id = (payload.get("note_id") or "").strip()
+    if not note_id:
+        return JsonResponse({"error": "note_id ausente"}, status=400)
+    ignorados = list(para.avisos_ignorados or [])
+    if payload.get("ignore", True):
+        if note_id not in ignorados:
+            ignorados.append(note_id)
+    else:
+        ignorados = [n for n in ignorados if n != note_id]
+    para.avisos_ignorados = ignorados
+    para.save(update_fields=["avisos_ignorados"])
+    return JsonResponse({"ok": True, "ignorados": ignorados})
 
 
 @require_POST

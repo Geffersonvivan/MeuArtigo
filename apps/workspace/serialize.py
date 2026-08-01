@@ -19,7 +19,9 @@ from .detect import detectar_paragrafo
 _BADGE = {
     "ok": ("verificada", "Verificada", False),
     "duvidosa": ("duvidosa", "Duvidosa", True),
-    "inexistente": ("nao-loc", "Não localizada", True),
+    # rejeitada/não localizada é uma DECISÃO tomada (descartada) — não fica mais
+    # pendente nem bloqueia o fechamento; só não pode ser citada no texto.
+    "inexistente": ("nao-loc", "Não localizada", False),
     "pendente": ("duvidosa", "Pendente", True),
 }
 
@@ -93,7 +95,7 @@ def _pipeline_data(article, gloss_count: int, red_flags: int) -> tuple[dict, dic
     n_linhas = sum(s.meta_linhas for s in article.sections.all())
     n_fontes = article.references.count()
     dub = article.references.filter(
-        verificada__in=[StatusVerif.DUVIDOSA, StatusVerif.INEXISTENTE]).count()
+        verificada__in=[StatusVerif.DUVIDOSA, StatusVerif.PENDENTE]).count()
 
     pipeline = {
         "redator": [
@@ -154,7 +156,8 @@ def article_to_appdata(article) -> dict:
         paras = []
         for p in sec.paragraphs.all():
             pid = f"p{p.pk}"
-            html, pnotes = detectar_paragrafo(pid, p.texto, refs_by_id, glossario)
+            ignorados = set(p.avisos_ignorados or [])
+            html, pnotes = detectar_paragrafo(pid, p.texto, refs_by_id, glossario, ignorados)
             paras.append({"id": pid, "html": html})
             notes.extend(pnotes)
         sections.append({
@@ -164,12 +167,18 @@ def article_to_appdata(article) -> dict:
 
     red_flags = sum(1 for n in notes if n["kind"] == "err")
     gloss_count = sum(1 for n in notes if n["label"] == "Glossário")
+    # "a decidir" = só as que ainda esperam decisão (duvidosa/pendente). Uma fonte
+    # já decidida (verificada=ok, ou descartada=inexistente) não conta como bloqueador.
     sources_to_decide = article.references.filter(
-        verificada__in=[StatusVerif.DUVIDOSA, StatusVerif.INEXISTENTE]).count()
+        verificada__in=[StatusVerif.DUVIDOSA, StatusVerif.PENDENTE]).count()
     pipeline, role_costs, models = _pipeline_data(article, gloss_count, red_flags)
+
+    from apps.articles.models import Article
+    areas_existentes = sorted({a for a in Article.objects.values_list("area", flat=True) if a})
 
     return {
         "articleId": article.pk,
+        "areas": areas_existentes,
         "pipeline": pipeline,
         "roleCosts": role_costs,
         "models": models,

@@ -14,14 +14,20 @@ from .render import render_paragraph
 _FATO = re.compile(r"\b(lei|resolu[cç][aã]o|art\.|artigo|s[uú]mula|R\$|\b(19|20)\d{2}\b|\d{3,})", re.I)
 
 
-def detectar_paragrafo(pid: str, texto: str, refs_by_id: dict, glossario: list) -> tuple[str, list[dict]]:
-    """Devolve (html do parágrafo, lista de avisos para ele)."""
+def detectar_paragrafo(pid: str, texto: str, refs_by_id: dict, glossario: list,
+                       ignorados: set | None = None) -> tuple[str, list[dict]]:
+    """Devolve (html do parágrafo, lista de avisos para ele).
+
+    `ignorados`: ids de avisos que o autor dispensou — quando presente, o aviso NÃO
+    entra na lista e (para "sem fonte") o sublinhado ondulado também não é aplicado.
+    """
+    ignorados = ignorados or set()
     tem_cite = "[[ref:" in texto
     html = render_paragraph(texto, refs_by_id)
     notas: list[dict] = []
 
     # sem-fonte: afirmação factual sem citação
-    if not tem_cite and _FATO.search(texto):
+    if not tem_cite and _FATO.search(texto) and f"ns-{pid}" not in ignorados:
         html = f'<span class="no-source" title="Afirmação sem fonte atribuída">{html}</span>'
         notas.append({
             "id": f"ns-{pid}", "pid": pid, "kind": "err", "source": "det",
@@ -34,6 +40,8 @@ def detectar_paragrafo(pid: str, texto: str, refs_by_id: dict, glossario: list) 
     for termo, variantes in glossario:
         for var in variantes:
             if var and var.lower() in baixo and termo.lower() not in baixo:
+                if f"gl-{pid}-{var}" in ignorados:
+                    break
                 notas.append({
                     "id": f"gl-{pid}-{var}", "pid": pid, "kind": "warn", "source": "det",
                     "label": "Glossário",
