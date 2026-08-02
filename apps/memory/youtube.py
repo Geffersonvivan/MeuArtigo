@@ -70,14 +70,14 @@ def _extrair_ideias(article, titulo: str, transcricao: str) -> dict:
     trecho = (transcricao or "")[:16000]  # limita o que enviamos ao modelo
     area = article.area or "conhecimento geral"
     system = (
-        "Você extrai IDEIAS aproveitáveis da transcrição de um vídeo, para inspirar um artigo "
-        f"da área de {area}. Responda SOMENTE JSON válido: "
+        "Você extrai IDEIAS aproveitáveis do conteúdo de uma fonte (vídeo ou documento), para "
+        f"inspirar um artigo da área de {area}. Responda SOMENTE JSON válido: "
         '{"resumo":"2-3 frases","ideias":[{"texto":"ideia em 1 frase","citavel":false}]}. '
         "Entre 6 e 10 ideias objetivas. Marque citavel=true quando for um dado/afirmação factual "
-        "específica (número, estudo, fato) que poderia virar citação. Não invente nada além da "
-        "transcrição."
+        "específica (número, estudo, fato) que poderia virar citação. Não invente nada além do "
+        "conteúdo fornecido."
     )
-    user = f"VÍDEO: {titulo}\n\nTRANSCRIÇÃO:\n{trecho}"
+    user = f"FONTE: {titulo}\n\nCONTEÚDO:\n{trecho}"
     res = get_provider("anthropic").generate(
         system=system, prompt=user, max_tokens=1200,
         model=getattr(settings, "MODELO_REDATOR", "claude-sonnet-5"), thinking=False,
@@ -129,6 +129,52 @@ def analisar_video(article, url: str):
             continue
         VideoIdea.objects.create(
             video=vs, texto=txt[:500], ordem=i,
+            citavel=bool(idea.get("citavel")) if isinstance(idea, dict) else False,
+        )
+    return vs
+
+
+def _extrair_texto_pdf(data: bytes) -> str:
+    """Texto de um PDF (pypdf). Vazio se for PDF escaneado (imagem) ou ilegível."""
+    from io import BytesIO
+
+    from pypdf import PdfReader
+    try:
+        reader = PdfReader(BytesIO(data))
+        partes = [t for page in reader.pages[:60] if (t := (page.extract_text() or "")).strip()]
+        return "\n".join(partes).strip()
+    except Exception:
+        return ""
+
+
+def analisar_pdf(article, filename: str, data: bytes):
+    """Analisa um PDF como fonte de ideias (texto → Claude). Idempotente por conteúdo."""
+    import hashlib
+
+    from .models import VideoIdea, VideoSource
+
+    texto = _extrair_texto_pdf(data)
+    vid = "pdf-" + hashlib.sha1(data).hexdigest()[:20]
+    existente = VideoSource.objects.filter(article=article, video_id=vid).first()
+    if existente:
+        return existente
+    titulo = (filename or "Documento PDF").rsplit(".", 1)[0][:400]
+    dados = {"resumo": "", "ideias": []}
+    if texto:
+        try:
+            dados = _extrair_ideias(article, titulo, texto)
+        except Exception:
+            dados = {"resumo": "", "ideias": []}
+    vs = VideoSource.objects.create(
+        article=article, tipo="pdf", url="", video_id=vid, titulo=titulo, canal="PDF",
+        resumo=(dados.get("resumo") or "")[:2000], tem_transcricao=bool(texto),
+    )
+    for i, idea in enumerate((dados.get("ideias") or [])[:12]):
+        t = (idea.get("texto") if isinstance(idea, dict) else str(idea)).strip()
+        if not t:
+            continue
+        VideoIdea.objects.create(
+            video=vs, texto=t[:500], ordem=i,
             citavel=bool(idea.get("citavel")) if isinstance(idea, dict) else False,
         )
     return vs
@@ -213,16 +259,18 @@ def video_para_referencia(video):
 
     if video.reference_id:
         return video.reference
+    is_pdf = video.tipo == "pdf"
     ref = Reference.objects.create(
-        article=video.article, tipo=TipoFonte.VIDEO,
-        titulo=video.titulo or f"Vídeo {video.video_id}", autor=video.canal,
-        url=video.url, trecho=(video.resumo or "")[:300],
+        article=video.article, tipo=TipoFonte.SITE if is_pdf else TipoFonte.VIDEO,
+        titulo=video.titulo or ("Documento" if is_pdf else f"Vídeo {video.video_id}"),
+        autor="" if is_pdf else video.canal, url=video.url, trecho=(video.resumo or "")[:300],
         data_acesso=timezone.now().date(), verificada=StatusVerif.PENDENTE,
     )
-    try:
-        verificar_referencia(ref, checar_conteudo=False)  # YouTube é verificável (URL existe)
-    except Exception:
-        pass
+    if video.url:  # só verifica quando há URL (YouTube); PDF fica pendente para você decidir
+        try:
+            verificar_referencia(ref, checar_conteudo=False)
+        except Exception:
+            pass
     video.reference = ref
     video.save(update_fields=["reference"])
     return ref

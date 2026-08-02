@@ -217,6 +217,7 @@ def _redacao_prompts(article, sec, pesquisa_txt: str = "", n_paras: int = 2):
               f"ESTILO: {estilo_desc} "
               + (f"PÚBLICO-ALVO: escreva pensando em {publico}. " if publico else "")
               + "Cite fontes apenas via [[ref:ID]] usando os IDs fornecidos; não invente citações. "
+              "Use no MÁXIMO 1-2 fontes por parágrafo e NUNCA repita o mesmo ID nem agrupe vários seguidos. "
               f"Escreva {n_paras} parágrafos desenvolvidos. Português do Brasil; devolva só o corpo "
               "(parágrafos separados por linha em branco), sem repetir o título da seção.")
     # Ideias selecionadas dos vídeos entram como INSPIRAÇÃO (não são fatos verificados).
@@ -379,7 +380,7 @@ def article_delete(request, pk):
 
 def _video_json(vs) -> dict:
     return {
-        "id": vs.pk, "titulo": vs.titulo or f"Vídeo {vs.video_id}", "canal": vs.canal,
+        "id": vs.pk, "tipo": vs.tipo, "titulo": vs.titulo or f"Vídeo {vs.video_id}", "canal": vs.canal,
         "url": vs.url, "resumo": vs.resumo, "temTranscricao": vs.tem_transcricao,
         "jaFonte": bool(vs.reference_id),
         "ideias": [{"id": i.pk, "texto": i.texto, "citavel": i.citavel,
@@ -408,6 +409,27 @@ def article_videos(request, pk):
         except Exception as exc:  # um vídeo com erro não derruba os demais
             logger.warning("Falha ao analisar vídeo %s: %s", url, exc)
     return JsonResponse({"videos": videos})
+
+
+@require_POST
+def article_pdf(request, pk):
+    """Analisa um PDF (upload) como fonte de ideias — mesmo fluxo do YouTube."""
+    from apps.memory.youtube import analisar_pdf
+    article = get_object_or_404(Article, pk=pk)
+    f = request.FILES.get("pdf")
+    if not f:
+        return JsonResponse({"error": "nenhum arquivo enviado"}, status=400)
+    if not (f.name.lower().endswith(".pdf") or f.content_type == "application/pdf"):
+        return JsonResponse({"error": "envie um arquivo PDF"}, status=400)
+    if f.size > 20 * 1024 * 1024:
+        return JsonResponse({"error": "PDF muito grande (máx. 20 MB)"}, status=400)
+    try:
+        vs = analisar_pdf(article, f.name, f.read())
+    except Exception as exc:
+        logger.warning("Falha ao analisar PDF %s: %s", f.name, exc)
+        return JsonResponse({"error": "falha ao processar o PDF"}, status=502)
+    aviso = None if vs.tem_transcricao else "PDF sem texto (escaneado?) — nenhuma ideia extraída."
+    return JsonResponse({"videos": [_video_json(vs)], "aviso": aviso})
 
 
 @require_POST

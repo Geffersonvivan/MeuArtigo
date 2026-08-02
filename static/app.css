@@ -863,6 +863,7 @@ body.status-final .paragraph .p-lock-mark{ display: none; }
 }
 .ideias-input:focus{ border-color: var(--accent-line); background: var(--surface); }
 .ideias-box .btn-primary{ margin-top: 8px; width: 100%; justify-content: center; }
+.ideias-pdf-btn{ margin-top: 6px; width: 100%; justify-content: center; display: inline-flex; align-items: center; gap: 6px; }
 .ideias-hint{ margin-top: 8px; font-size: 11px; line-height: 1.4; color: var(--text-faint); }
 .ideias-legend{ margin-top: 8px; display: flex; flex-direction: column; gap: 3px; font-size: 10.5px; color: var(--text-muted); }
 .ideias-legend .lg-box{ color: var(--accent); }

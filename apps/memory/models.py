@@ -203,8 +203,9 @@ class VideoSource(models.Model):
     article = models.ForeignKey(
         "articles.Article", on_delete=models.CASCADE, related_name="videos"
     )
-    url = models.URLField("URL", max_length=800)
-    video_id = models.CharField("ID do vídeo", max_length=20)
+    tipo = models.CharField("tipo", max_length=10, default="youtube")  # youtube | pdf
+    url = models.URLField("URL", max_length=800, blank=True)
+    video_id = models.CharField("ID da fonte", max_length=64)
     titulo = models.CharField("título", max_length=400, blank=True)
     canal = models.CharField("canal", max_length=300, blank=True)
     publicado_em = models.CharField("publicado em", max_length=40, blank=True)

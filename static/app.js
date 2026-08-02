@@ -3096,7 +3096,7 @@ function initIdeias(){
       }).join('');
       const semTrans = v.temTranscricao ? '' : '<div class="vi-warn">Sem legenda — só metadados. Ainda dá pra usar como fonte.</div>';
       return `<div class="video-card" data-vid="${v.id}">` +
-        `<div class="vi-head"><div class="vi-title">▶ ${esc(v.titulo)}</div>` +
+        `<div class="vi-head"><div class="vi-title">${v.tipo === 'pdf' ? '📄' : '▶'} ${esc(v.titulo)}</div>` +
         `<button class="vi-source${v.jaFonte ? ' done' : ''}" data-video="${v.id}"${v.jaFonte ? ' disabled' : ''}>${v.jaFonte ? '✓ Fonte' : 'Usar como fonte'}</button></div>` +
         `<div class="vi-meta">${esc(v.canal)}</div>` +
         (v.resumo ? `<div class="vi-resumo">${esc(v.resumo)}</div>` : '') + semTrans +
@@ -3120,6 +3120,29 @@ function initIdeias(){
       showToast(((d.videos || []).length) + ' vídeo(s) analisado(s).');
     }).catch(() => { btn.disabled = false; btn.textContent = lbl; showToast('Falha ao analisar.'); });
   });
+
+  // Anexar PDF (upload) — mesmo fluxo de ideias
+  const pdfBtn = document.getElementById('btn-anexar-pdf');
+  const pdfInput = document.getElementById('pdf-input');
+  if (pdfBtn && pdfInput){
+    pdfBtn.addEventListener('click', () => pdfInput.click());
+    pdfInput.addEventListener('change', () => {
+      const file = pdfInput.files && pdfInput.files[0];
+      if (!file) return;
+      const lbl = pdfBtn.textContent; pdfBtn.disabled = true; pdfBtn.textContent = 'Processando PDF…';
+      const fd = new FormData(); fd.append('pdf', file);
+      fetch('/workspace/article/' + D.articleId + '/pdf/', { method: 'POST', headers: { 'X-CSRFToken': getCSRF() }, body: fd })
+        .then(r => r.json()).then(d => {
+          pdfBtn.disabled = false; pdfBtn.textContent = lbl; pdfInput.value = '';
+          if (d.error){ showToast(d.error); return; }
+          const byId = {}; (window.__DATA__.videos || []).forEach(v => byId[v.id] = v);
+          (d.videos || []).forEach(v => byId[v.id] = v);
+          window.__DATA__.videos = Object.keys(byId).map(k => byId[k]);
+          renderVideos(); loadFits(true);
+          showToast(d.aviso || 'PDF analisado.');
+        }).catch(() => { pdfBtn.disabled = false; pdfBtn.textContent = lbl; pdfInput.value = ''; showToast('Falha ao enviar o PDF.'); });
+    });
+  }
 
   list.addEventListener('change', (e) => {
     const cb = e.target.closest('input[data-idea]'); if (!cb) return;

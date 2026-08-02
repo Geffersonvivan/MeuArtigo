@@ -86,7 +86,7 @@ def _videos(article) -> list:
     out = []
     for vs in article.videos.all():
         out.append({
-            "id": vs.pk, "titulo": vs.titulo or f"Vídeo {vs.video_id}", "canal": vs.canal,
+            "id": vs.pk, "tipo": vs.tipo, "titulo": vs.titulo or f"Vídeo {vs.video_id}", "canal": vs.canal,
             "url": vs.url, "resumo": vs.resumo, "temTranscricao": vs.tem_transcricao,
             "jaFonte": bool(vs.reference_id),
             "ideias": [{"id": i.pk, "texto": i.texto, "citavel": i.citavel,

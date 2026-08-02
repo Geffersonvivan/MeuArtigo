@@ -21,6 +21,7 @@ urlpatterns = [
     path("article/<int:pk>/status/", views.article_status, name="article_status"),
     path("article/<int:pk>/delete/", views.article_delete, name="article_delete"),
     path("article/<int:pk>/videos/", views.article_videos, name="article_videos"),
+    path("article/<int:pk>/pdf/", views.article_pdf, name="article_pdf"),
     path("idea/<int:pk>/toggle/", views.video_idea_toggle, name="video_idea_toggle"),
     path("idea/<int:pk>/fit/", views.video_idea_fit, name="video_idea_fit"),
     path("article/<int:pk>/idea-fits/", views.article_idea_fits, name="article_idea_fits"),

@@ -29,13 +29,20 @@ def _ano(ref: Reference) -> str:
     return "[s.d.]"
 
 
+_ARTIGOS_INI = {"o", "a", "os", "as", "um", "uma", "uns", "umas"}
+
+
 def _sobrenome(ref: Reference) -> str:
-    """Chave autor-data (NBR 10520). Para normas usa BRASIL; senão, sobrenome em CAIXA."""
+    """Chave autor-data (NBR 10520). Normas → BRASIL; com autor → sobrenome em CAIXA;
+    SEM autor → entra pelo TÍTULO (1ª palavra significativa em CAIXA), NÃO 'BRASIL'."""
     if ref.tipo in (TipoFonte.LEI, TipoFonte.JURISPRUDENCIA):
         return "BRASIL"
     if ref.autor:
         return ref.autor.split()[-1].upper()
-    return "BRASIL" if not ref.autor else ref.autor.upper()
+    for w in re.findall(r"[0-9A-Za-zÀ-ÿ]+", ref.titulo or ""):
+        if w.lower() not in _ARTIGOS_INI:
+            return w.upper()
+    return "FONTE"
 
 
 def formatar_abnt(ref: Reference) -> str:
@@ -59,6 +66,21 @@ def formatar_abnt(ref: Reference) -> str:
 def citacao_no_corpo(ref: Reference) -> str:
     """Citação autor-data para inserir no texto: (BRASIL, 1997)."""
     return f"({_sobrenome(ref)}, {_ano(ref)})"
+
+
+def _combinar_citacoes(texto: str) -> str:
+    """Junta citações autor-data ADJACENTES e remove repetições (NBR 10520):
+    "(X, 2025)(X, 2025)(Y, 2026)" → "(X, 2025; Y, 2026)"."""
+    def _merge(m: re.Match) -> str:
+        vistos, uniq = set(), []
+        for c in re.findall(r"\(([^()]+)\)", m.group(0)):
+            k = c.strip()
+            if k and k not in vistos:
+                vistos.add(k)
+                uniq.append(k)
+        return "(" + "; ".join(uniq) + ")"
+
+    return re.sub(r"(?:\([^()]*,\s*(?:19|20)\d{2}[a-z]?\)\s*){2,}", _merge, texto)
 
 
 def resolver_marcadores(texto: str, refs: dict[int, Reference], *,
@@ -89,7 +111,10 @@ def resolver_marcadores(texto: str, refs: dict[int, Reference], *,
             return f"[{numeros[rid]}]"
         return citacao_no_corpo(ref)
 
-    return MARCADOR_RE.sub(_sub, texto), usados
+    resolvido = MARCADOR_RE.sub(_sub, texto)
+    if modo != "nota_rodape":
+        resolvido = _combinar_citacoes(resolvido)  # junta/dedupe citações agrupadas
+    return resolvido, usados
 
 
 def gerar_notas_md(refs_ordenadas: list[Reference], *, titulo: str = "Notas") -> str:
