@@ -20,12 +20,15 @@ REESCRITA_SYSTEM = (
 
 
 def build_reescrita_prompt(*, contexto: str, secao_titulo: str, paragrafo: str,
-                           instrucao: str) -> tuple[str, str]:
+                           instrucao: str, ideias: list[str] | None = None) -> tuple[str, str]:
     ctx = (contexto or "").strip()
+    ideias_txt = "\n".join(f"- {t}" for t in (ideias or []))
     user = (
         (f"CONTEXTO DO ARTIGO: {ctx}\n\n" if ctx else "")
         + f"SEÇÃO: {secao_titulo}\n\n"
         + f"PARÁGRAFO ATUAL:\n{paragrafo}\n\n"
+        + (f"IDEIAS DE APOIO (de vídeos; inspiração, NÃO são fatos verificados — não cite "
+           f"como fonte):\n{ideias_txt}\n\n" if ideias_txt else "")
         + f"INSTRUÇÃO: {instrucao}\n\n"
         + "Devolva apenas o parágrafo reescrito."
     )

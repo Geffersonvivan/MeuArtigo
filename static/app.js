@@ -2931,6 +2931,9 @@ const TOUR_STEPS = [
     body: 'Verificações automáticas e grátis (sem IA): afirmação sem fonte, termo fora do glossário, extensão… Cada aviso traz "Corrigir" (chama a IA) ou "Ignorar".' },
   { sel: '.context', place: 'left', title: 'Painel de contexto',
     body: 'Pipeline: o que cada IA (Redator, Pesquisador, Revisor) fez e quanto custou. Fontes: as referências e seus status. Memória: trechos que você já escreveu, para referenciar em vez de repetir.' },
+  { sel: '.tab[data-tab="ideias"]', place: 'left', title: 'Ideias de vídeos',
+    body: 'Cole links do YouTube: a transcrição vira ideias que você marca (☑) para o Redator usar como inspiração — e o vídeo pode virar uma fonte citável (⚑).',
+    onShow: () => { try { switchContextTab('ideias'); } catch (e) {} } },
   { sel: '.topbar', place: 'bottom', title: 'Topo: status, custo e ações',
     body: 'Nome e status do artigo (Rascunho → Em revisão → Final), o custo da sessão, Exportar e "Fechar artigo" (o checklist que leva à versão final). O "?" reabre este tour quando quiser.' },
 ];
@@ -2974,6 +2977,7 @@ function showTourStep(i){
   _tourIdx = i;
   const step = TOUR_STEPS[i];
   const scope = $('#workspace-view') || document;
+  if (step.onShow){ try { step.onShow(); } catch (e) {} }
   const target = scope.querySelector(step.sel);
   const hole = $('#tour-hole'), card = $('#tour-card');
   if (!target){ if (i < TOUR_STEPS.length - 1) return showTourStep(i + 1); return endTour(); }
@@ -3009,6 +3013,7 @@ function _positionTourCard(card, r, place){
 function endTour(){
   window.removeEventListener('keydown', _tourKey);
   const o = $('#tour-overlay'); if (o) o.remove();
+  try { switchContextTab('pipeline'); } catch (e) {}  // volta o painel ao padrão
   try { localStorage.setItem('meuartigo_tour_v1', '1'); } catch(e){}
 }
 
@@ -3048,6 +3053,131 @@ function initTooltips(){
   });
 }
 
+// ===================================================================
+// ABA IDEIAS — vídeos do YouTube como fonte de ideias
+// ===================================================================
+function initIdeias(){
+  const D = window.__DATA__; if (!D) return;
+  const list = document.getElementById('video-list');
+  const btn = document.getElementById('btn-analisar-video');
+  const ta = document.getElementById('video-urls');
+  if (!list || !btn || !ta) return;
+  const esc = s => { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; };
+  window.__ideaFits = window.__ideaFits || {};
+  let _fitsLoaded = false;
+
+  // Calcula o encaixe (parágrafo + sinergia %) de TODAS as ideias — mostrado inline,
+  // antes de "Usar aqui". Lazy: só na 1ª abertura da aba (e após analisar).
+  function loadFits(force){
+    const vids = (window.__DATA__.videos || []);
+    if (!vids.some(v => (v.ideias || []).length)) return;
+    if (_fitsLoaded && !force) return;
+    _fitsLoaded = true;
+    fetch('/workspace/article/' + D.articleId + '/idea-fits/', { method: 'POST', headers: { 'X-CSRFToken': getCSRF() } })
+      .then(r => r.json()).then(d => { window.__ideaFits = d.fits || {}; renderVideos(); })
+      .catch(() => { _fitsLoaded = false; });
+  }
+
+  function renderVideos(){
+    const vids = (window.__DATA__ && window.__DATA__.videos) || [];
+    if (!vids.length){ list.innerHTML = '<div class="ideias-empty">Nenhum vídeo ainda. Cole uma URL acima e clique em Analisar.</div>'; return; }
+    list.innerHTML = vids.map(v => {
+      const fits = window.__ideaFits || {};
+      const ideias = (v.ideias || []).map(i => {
+        const f = fits[String(i.id)];
+        const fitTxt = f ? `→ cabe em “${esc(f.secao)}” · ${f.pct}% de sinergia` : '';
+        const fitCls = f ? (f.pct >= 60 ? ' alta' : f.pct >= 40 ? ' media' : ' baixa') : '';
+        return `<div class="vi-idea${i.citavel ? ' citavel' : ''}">` +
+          `<label class="vi-pick"><input type="checkbox" data-idea="${i.id}"${i.selecionada ? ' checked' : ''}/>` +
+          `<span>${esc(i.texto)}${i.citavel ? ' <span class="vi-flag" title="afirmação citável">⚑</span>' : ''}</span></label>` +
+          `<div class="vi-fit${fitCls}">${fitTxt}</div>` +
+          `<button class="vi-use" data-use="${i.id}">Usar aqui →</button>` +
+          `</div>`;
+      }).join('');
+      const semTrans = v.temTranscricao ? '' : '<div class="vi-warn">Sem legenda — só metadados. Ainda dá pra usar como fonte.</div>';
+      return `<div class="video-card" data-vid="${v.id}">` +
+        `<div class="vi-head"><div class="vi-title">▶ ${esc(v.titulo)}</div>` +
+        `<button class="vi-source${v.jaFonte ? ' done' : ''}" data-video="${v.id}"${v.jaFonte ? ' disabled' : ''}>${v.jaFonte ? '✓ Fonte' : 'Usar como fonte'}</button></div>` +
+        `<div class="vi-meta">${esc(v.canal)}</div>` +
+        (v.resumo ? `<div class="vi-resumo">${esc(v.resumo)}</div>` : '') + semTrans +
+        (ideias ? `<div class="vi-ideas">${ideias}</div>` : '') + `</div>`;
+    }).join('');
+  }
+
+  btn.addEventListener('click', () => {
+    const urls = ta.value.trim(); if (!urls){ showToast('Cole ao menos uma URL do YouTube.'); return; }
+    const lbl = btn.textContent; btn.disabled = true; btn.textContent = 'Analisando…';
+    fetch('/workspace/article/' + D.articleId + '/videos/', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
+      body: JSON.stringify({ urls })
+    }).then(r => r.json()).then(d => {
+      btn.disabled = false; btn.textContent = lbl;
+      if (d.error){ showToast(d.error); return; }
+      const byId = {}; (window.__DATA__.videos || []).forEach(v => byId[v.id] = v);
+      (d.videos || []).forEach(v => byId[v.id] = v);
+      window.__DATA__.videos = Object.keys(byId).map(k => byId[k]);
+      ta.value = ''; renderVideos(); loadFits(true);
+      showToast(((d.videos || []).length) + ' vídeo(s) analisado(s).');
+    }).catch(() => { btn.disabled = false; btn.textContent = lbl; showToast('Falha ao analisar.'); });
+  });
+
+  list.addEventListener('change', (e) => {
+    const cb = e.target.closest('input[data-idea]'); if (!cb) return;
+    fetch('/workspace/idea/' + cb.dataset.idea + '/toggle/', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCSRF() },
+      body: JSON.stringify({ selecionada: cb.checked })
+    }).catch(() => {});
+    (window.__DATA__.videos || []).forEach(v => (v.ideias || []).forEach(i => { if (String(i.id) === cb.dataset.idea) i.selecionada = cb.checked; }));
+  });
+
+  function _ideaTexto(id){
+    let texto = '';
+    (window.__DATA__.videos || []).forEach(v => (v.ideias || []).forEach(i => { if (String(i.id) === String(id)) texto = i.texto; }));
+    return texto;
+  }
+  function _applyFit(fit, texto){
+    const p = document.getElementById(fit.paragraphId);
+    if (p){
+      p.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (typeof openRewrite === 'function') openRewrite(fit.paragraphId, 'Incorpore esta ideia ao parágrafo, sem inventar dados: ' + texto);
+    }
+    showToast(`Encaixe: ${fit.secao} (${fit.pct}%). Ajuste e clique Reescrever.`);
+  }
+  function useIdea(id, btn){
+    const texto = _ideaTexto(id);
+    const cached = (window.__ideaFits || {})[String(id)];
+    if (cached){ _applyFit(cached, texto); return; }  // já sabemos o encaixe → executa direto
+    const lbl = btn.textContent; btn.disabled = true; btn.textContent = 'Encaixando…';
+    fetch('/workspace/idea/' + id + '/fit/', { method: 'POST', headers: { 'X-CSRFToken': getCSRF() } })
+      .then(r => r.json()).then(d => {
+        btn.disabled = false; btn.textContent = lbl;
+        if (d.error){ showToast(d.error); return; }
+        _applyFit(d, texto);
+      })
+      .catch(() => { btn.disabled = false; btn.textContent = lbl; showToast('Falha ao calcular o encaixe.'); });
+  }
+
+  list.addEventListener('click', (e) => {
+    const use = e.target.closest('.vi-use');
+    if (use && !use.disabled){ useIdea(use.dataset.use, use); return; }
+    const sb = e.target.closest('.vi-source'); if (!sb || sb.disabled) return;
+    sb.disabled = true; sb.textContent = '…';
+    fetch('/workspace/video/' + sb.dataset.video + '/source/', { method: 'POST', headers: { 'X-CSRFToken': getCSRF() } })
+      .then(r => r.json()).then(() => {
+        sb.textContent = '✓ Fonte'; sb.classList.add('done');
+        (window.__DATA__.videos || []).forEach(v => { if (String(v.id) === sb.dataset.video) v.jaFonte = true; });
+        if (window.__refreshFontes) window.__refreshFontes();
+        showToast('Vídeo adicionado às Fontes.');
+      }).catch(() => { sb.disabled = false; sb.textContent = 'Usar como fonte'; showToast('Falha.'); });
+  });
+
+  // Ao abrir a aba Ideias, calcula os encaixes (sinergia) de todas as ideias.
+  const ideiasTab = document.querySelector('#workspace-view .tab[data-tab="ideias"]');
+  if (ideiasTab) ideiasTab.addEventListener('click', () => loadFits());
+
+  renderVideos();
+}
+
 const originalBoot = boot;
 boot = function(){
   originalBoot();
@@ -3058,6 +3188,7 @@ boot = function(){
   initUserMenuActions();
   initTooltips();
   wireHelp();
+  initIdeias();
   maybeAutoTour();
 };
 

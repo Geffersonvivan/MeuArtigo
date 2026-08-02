@@ -239,6 +239,7 @@ window.__tweaks = /*EDITMODE-BEGIN*/{
         <button class="tab active" data-tab="pipeline">Pipeline</button>
         <button class="tab" data-tab="fontes">Fontes</button>
         <button class="tab" data-tab="memoria">Memória</button>
+        <button class="tab" data-tab="ideias" data-tip="Analise vídeos do YouTube como fonte de ideias">Ideias</button>
       </div>
 
       <!-- Pipeline (agrupada por papel) -->
@@ -289,6 +290,20 @@ window.__tweaks = /*EDITMODE-BEGIN*/{
           <div class="m-summary">Você já tratou da Res. TSE 23.732/2024 no contexto de deepfake — reaproveitar apenas a nota sobre identificação de responsável.</div>
           <button class="m-ref">Referenciar em vez de repetir</button>
         </div>
+      </div>
+
+      <div class="tab-panel" data-panel="ideias">
+        <div class="ideias-box">
+          <textarea id="video-urls" class="ideias-input" rows="2"
+            placeholder="Cole 1 ou várias URLs do YouTube (uma por linha)…"></textarea>
+          <button class="btn-primary" id="btn-analisar-video">Analisar vídeo(s)</button>
+          <div class="ideias-hint">A transcrição vira ideias. <b>Marque</b> as que quer usar — o Redator as considera ao redigir. O vídeo pode virar <b>fonte citável</b>.</div>
+          <div class="ideias-legend">
+            <span><span class="lg-box">☑</span> marcar = usar como inspiração</span>
+            <span><span class="vi-flag">⚑</span> = afirmação citável (pode virar fonte)</span>
+          </div>
+        </div>
+        <div id="video-list"></div>
       </div>
     </aside>
 

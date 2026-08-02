@@ -82,6 +82,19 @@ def _memory(article) -> list:
         return []
 
 
+def _videos(article) -> list:
+    out = []
+    for vs in article.videos.all():
+        out.append({
+            "id": vs.pk, "titulo": vs.titulo or f"Vídeo {vs.video_id}", "canal": vs.canal,
+            "url": vs.url, "resumo": vs.resumo, "temTranscricao": vs.tem_transcricao,
+            "jaFonte": bool(vs.reference_id),
+            "ideias": [{"id": i.pk, "texto": i.texto, "citavel": i.citavel,
+                        "selecionada": i.selecionada} for i in vs.ideias.all()],
+        })
+    return out
+
+
 def _pipeline_data(article, gloss_count: int, red_flags: int) -> tuple[dict, dict, dict]:
     """Devolve (pipeline actions, roleCosts BRL, models reais) para o painel."""
     calls = list(article.llm_calls.all())
@@ -179,6 +192,7 @@ def article_to_appdata(article) -> dict:
     return {
         "articleId": article.pk,
         "areas": areas_existentes,
+        "videos": _videos(article),
         "pipeline": pipeline,
         "roleCosts": role_costs,
         "models": models,

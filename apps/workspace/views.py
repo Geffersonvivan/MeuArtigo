@@ -219,9 +219,16 @@ def _redacao_prompts(article, sec, pesquisa_txt: str = "", n_paras: int = 2):
               + "Cite fontes apenas via [[ref:ID]] usando os IDs fornecidos; não invente citações. "
               f"Escreva {n_paras} parágrafos desenvolvidos. Português do Brasil; devolva só o corpo "
               "(parágrafos separados por linha em branco), sem repetir o título da seção.")
+    # Ideias selecionadas dos vídeos entram como INSPIRAÇÃO (não são fatos verificados).
+    from apps.memory.models import VideoIdea
+    ideias = list(VideoIdea.objects.filter(video__article=article, selecionada=True)
+                  .values_list("texto", flat=True))
+    ideias_txt = "\n".join(f"- {t}" for t in ideias)
     user = (f"SEÇÃO: {sec.titulo}\nO que cobrir: {sec.resumo}\nMeta: ~{sec.meta_linhas} linhas.\n"
             f"FONTES VERIFICADAS:\n{refs_lst}\n"
-            + (f"\nPESQUISA DE APOIO:\n{pesquisa_txt}\n" if pesquisa_txt else ""))
+            + (f"\nPESQUISA DE APOIO:\n{pesquisa_txt}\n" if pesquisa_txt else "")
+            + (f"\nIDEIAS DE APOIO (de vídeos; use como inspiração, NÃO são fatos verificados — "
+               f"não cite como fonte):\n{ideias_txt}\n" if ideias else ""))
     return system, user
 
 
@@ -370,6 +377,91 @@ def article_delete(request, pk):
     return JsonResponse({"ok": True, "url": url})
 
 
+def _video_json(vs) -> dict:
+    return {
+        "id": vs.pk, "titulo": vs.titulo or f"Vídeo {vs.video_id}", "canal": vs.canal,
+        "url": vs.url, "resumo": vs.resumo, "temTranscricao": vs.tem_transcricao,
+        "jaFonte": bool(vs.reference_id),
+        "ideias": [{"id": i.pk, "texto": i.texto, "citavel": i.citavel,
+                    "selecionada": i.selecionada} for i in vs.ideias.all()],
+    }
+
+
+@require_POST
+def article_videos(request, pk):
+    """Analisa uma ou VÁRIAS URLs de YouTube como fonte de ideias (transcrição → Claude)."""
+    from apps.memory.youtube import analisar_video, parse_video_ids
+    article = get_object_or_404(Article, pk=pk)
+    try:
+        urls = json.loads(request.body or "{}").get("urls") or ""
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "payload inválido"}, status=400)
+    ids = parse_video_ids(urls)
+    if not ids:
+        return JsonResponse({"error": "Nenhuma URL de YouTube reconhecida."}, status=400)
+    videos = []
+    for url, _ in ids:
+        try:
+            vs = analisar_video(article, url)
+            if vs:
+                videos.append(_video_json(vs))
+        except Exception as exc:  # um vídeo com erro não derruba os demais
+            logger.warning("Falha ao analisar vídeo %s: %s", url, exc)
+    return JsonResponse({"videos": videos})
+
+
+@require_POST
+def video_idea_toggle(request, pk):
+    """Marca/desmarca uma ideia (entra no 'banco de ideias' usado pelo Redator)."""
+    from apps.memory.models import VideoIdea
+    idea = get_object_or_404(VideoIdea, pk=pk)
+    try:
+        idea.selecionada = bool(json.loads(request.body or "{}").get("selecionada"))
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "payload inválido"}, status=400)
+    idea.save(update_fields=["selecionada"])
+    return JsonResponse({"ok": True, "id": idea.pk, "selecionada": idea.selecionada})
+
+
+@require_POST
+def article_idea_fits(request, pk):
+    """Encaixe (parágrafo + sinergia %) de TODAS as ideias — mostrado antes de 'Usar aqui'."""
+    from apps.memory.youtube import melhor_encaixe_lote
+    article = get_object_or_404(Article, pk=pk)
+    try:
+        fits = melhor_encaixe_lote(article)
+    except Exception as exc:
+        logger.warning("Falha nos encaixes do artigo %s: %s", pk, exc)
+        return JsonResponse({"fits": {}})
+    return JsonResponse({"fits": fits})
+
+
+@require_POST
+def video_idea_fit(request, pk):
+    """Aponta o parágrafo onde a ideia melhor encaixa (sinergia % por embeddings)."""
+    from apps.memory.models import VideoIdea
+    from apps.memory.youtube import melhor_encaixe
+    idea = get_object_or_404(VideoIdea, pk=pk)
+    try:
+        fit = melhor_encaixe(idea.texto, idea.video.article)
+    except Exception as exc:
+        logger.warning("Falha no encaixe da ideia %s: %s", pk, exc)
+        return JsonResponse({"error": "não foi possível calcular o encaixe"}, status=502)
+    if not fit:
+        return JsonResponse({"error": "o artigo ainda não tem parágrafos para comparar"}, status=400)
+    return JsonResponse(fit)
+
+
+@require_POST
+def video_source(request, pk):
+    """Transforma o vídeo numa Reference audiovisual citável (aba Fontes)."""
+    from apps.memory.models import VideoSource
+    from apps.memory.youtube import video_para_referencia
+    vs = get_object_or_404(VideoSource, pk=pk)
+    ref = video_para_referencia(vs)
+    return JsonResponse({"ok": True, "refId": ref.pk, "titulo": ref.titulo})
+
+
 @require_POST
 def article_status(request, pk):
     """Transições de fechamento: review → approve/finalize (final + versão + Snapshot) → reabrir."""
@@ -470,9 +562,12 @@ def paragraph_rewrite(request, pk):
     instrucao = (payload.get("instrucao") or "").strip() or "Melhore a clareza e a fluidez deste parágrafo."
 
     article = para.section.article
+    from apps.memory.models import VideoIdea
+    ideias = list(VideoIdea.objects.filter(video__article=article, selecionada=True)
+                  .values_list("texto", flat=True))
     system, user = build_reescrita_prompt(
         contexto=article.contexto or article.titulo, secao_titulo=para.section.titulo,
-        paragrafo=para.texto, instrucao=instrucao,
+        paragrafo=para.texto, instrucao=instrucao, ideias=ideias,
     )
     provider = get_provider("anthropic")
     _ALLOWED = {"claude-opus-5", "claude-sonnet-5", "claude-haiku-4-5"}

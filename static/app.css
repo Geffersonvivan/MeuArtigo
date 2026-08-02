@@ -854,6 +854,44 @@ body.status-final .paragraph .p-lock-mark{ display: none; }
   pointer-events: none; box-shadow: 0 4px 14px rgba(0,0,0,0.22);
 }
 
+/* ---------- ABA IDEIAS (vídeos do YouTube) ---------- */
+.ideias-box{ padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.ideias-input{
+  width: 100%; box-sizing: border-box; resize: vertical; min-height: 46px;
+  border: 1px solid var(--border); border-radius: 3px; padding: 8px 10px;
+  font-family: var(--font-ui); font-size: 12.5px; color: var(--text); outline: none;
+}
+.ideias-input:focus{ border-color: var(--accent-line); background: var(--surface); }
+.ideias-box .btn-primary{ margin-top: 8px; width: 100%; justify-content: center; }
+.ideias-hint{ margin-top: 8px; font-size: 11px; line-height: 1.4; color: var(--text-faint); }
+.ideias-legend{ margin-top: 8px; display: flex; flex-direction: column; gap: 3px; font-size: 10.5px; color: var(--text-muted); }
+.ideias-legend .lg-box{ color: var(--accent); }
+.ideias-legend .vi-flag{ color: var(--warn); }
+.ideias-empty{ padding: 20px 14px; font-size: 12px; color: var(--text-faint); text-align: center; }
+.video-card{ padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.video-card .vi-head{ display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.video-card .vi-title{ font-size: 12.5px; font-weight: 500; color: var(--text); line-height: 1.3; }
+.video-card .vi-meta{ font-size: 11px; color: var(--text-faint); font-family: var(--font-mono); margin-top: 2px; }
+.video-card .vi-resumo{ font-family: var(--font-serif); font-style: italic; font-size: 12.5px; color: var(--text-muted); line-height: 1.5; margin: 8px 0; }
+.video-card .vi-warn{ font-size: 11px; color: var(--warn); background: var(--warn-soft); padding: 5px 8px; border-radius: 3px; margin: 6px 0; }
+.vi-source{ flex: none; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--accent); border: 1px solid var(--accent-line); border-radius: 3px; padding: 3px 8px; white-space: nowrap; }
+.vi-source:hover{ background: var(--accent-soft); }
+.vi-source.done{ color: var(--ok); border-color: var(--ok-soft); background: var(--ok-soft); }
+.vi-ideas{ margin-top: 6px; display: flex; flex-direction: column; gap: 1px; }
+.vi-idea{ padding: 4px 6px; border-radius: 3px; font-size: 12.5px; line-height: 1.4; color: var(--text); }
+.vi-idea:hover{ background: var(--surface-2); }
+.vi-pick{ display: flex; gap: 8px; align-items: flex-start; cursor: pointer; }
+.vi-pick input{ margin-top: 3px; flex: none; }
+.vi-flag{ color: var(--warn); }
+.vi-fit{ margin: 2px 0 0 22px; font-size: 10.5px; }
+.vi-fit:empty{ display: none; }
+.vi-fit.alta{ color: var(--ok); }
+.vi-fit.media{ color: var(--warn); }
+.vi-fit.baixa{ color: var(--text-faint); }
+.vi-use{ margin: 2px 0 0 22px; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--accent); opacity: 0; transition: opacity .12s; }
+.vi-idea:hover .vi-use{ opacity: 1; }
+.vi-use:hover{ text-decoration: underline; }
+
 /* Ação destrutiva (excluir artigo) */
 .btn-danger{
   height: 28px;

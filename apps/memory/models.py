@@ -9,6 +9,7 @@ class TipoFonte(models.TextChoices):
     DOUTRINA = "doutrina", "Doutrina"
     NOTICIA = "noticia", "Notícia"
     SITE = "site", "Site/artigo"
+    VIDEO = "video", "Vídeo"
 
 
 class StatusVerif(models.TextChoices):
@@ -190,3 +191,57 @@ class MemoryChunk(models.Model):
 
     def __str__(self):
         return f"chunk #{self.ordem} de {self.article_id} ({self.area_slug})"
+
+
+class VideoSource(models.Model):
+    """Um vídeo do YouTube usado como fonte de IDEIAS para complementar o artigo.
+
+    A transcrição (legendas) é resumida pelo Redator em ideias (VideoIdea). O vídeo
+    pode virar uma Reference citável (audiovisual) via ação "Usar como fonte".
+    """
+
+    article = models.ForeignKey(
+        "articles.Article", on_delete=models.CASCADE, related_name="videos"
+    )
+    url = models.URLField("URL", max_length=800)
+    video_id = models.CharField("ID do vídeo", max_length=20)
+    titulo = models.CharField("título", max_length=400, blank=True)
+    canal = models.CharField("canal", max_length=300, blank=True)
+    publicado_em = models.CharField("publicado em", max_length=40, blank=True)
+    resumo = models.TextField("resumo", blank=True)
+    tem_transcricao = models.BooleanField("tem transcrição", default=False)
+    reference = models.ForeignKey(
+        "memory.Reference", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="video", help_text="Reference criada quando vira fonte citável.",
+    )
+    criado_em = models.DateTimeField("criado em", auto_now_add=True)
+
+    class Meta:
+        verbose_name = "vídeo (fonte)"
+        verbose_name_plural = "vídeos (fontes)"
+        ordering = ["-criado_em"]
+        constraints = [
+            models.UniqueConstraint(fields=["article", "video_id"], name="uniq_article_video"),
+        ]
+
+    def __str__(self):
+        return f"{self.titulo or self.video_id} ({self.article_id})"
+
+
+class VideoIdea(models.Model):
+    """Uma ideia extraída da transcrição de um vídeo. Se `selecionada`, entra no
+    'banco de ideias' do artigo e é injetada como contexto na redação (Redator)."""
+
+    video = models.ForeignKey(VideoSource, on_delete=models.CASCADE, related_name="ideias")
+    texto = models.TextField("ideia")
+    citavel = models.BooleanField("afirmação citável", default=False)
+    selecionada = models.BooleanField("selecionada", default=False)
+    ordem = models.PositiveIntegerField("ordem", default=0)
+
+    class Meta:
+        verbose_name = "ideia de vídeo"
+        verbose_name_plural = "ideias de vídeo"
+        ordering = ["video_id", "ordem"]
+
+    def __str__(self):
+        return f"ideia #{self.ordem} de {self.video_id}"
