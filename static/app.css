@@ -820,6 +820,67 @@ body.status-final .paragraph .p-lock-mark{ display: none; }
 }
 .btn-ghost:hover{ background: var(--surface-2); color: var(--text); }
 
+/* ---------- TOUR GUIADO (onboarding) ---------- */
+.tour-overlay{ position: fixed; inset: 0; z-index: 9998; }   /* captura cliques (app inerte durante o tour) */
+.tour-hole{
+  position: fixed; border-radius: 5px; pointer-events: none;
+  box-shadow: 0 0 0 9999px rgba(28,25,23,0.60);
+  border: 2px solid var(--accent-line);
+  transition: left .28s ease, top .28s ease, width .28s ease, height .28s ease;
+}
+.tour-card{
+  position: fixed; width: 300px; z-index: 9999;
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: 6px; box-shadow: 0 10px 34px rgba(0,0,0,0.20);
+  padding: 14px 16px 12px; font-family: var(--font-ui);
+}
+.tour-card .tour-count{ font-family: var(--font-mono); font-size: 10px; color: var(--text-faint); margin-bottom: 4px; }
+.tour-card .tour-title{ font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+.tour-card .tour-body{ font-size: 12.5px; line-height: 1.5; color: var(--text-muted); margin-bottom: 14px; }
+.tour-card .tour-actions{ display: flex; align-items: center; justify-content: space-between; }
+.tour-card .tour-skip{ font-size: 12px; color: var(--text-faint); }
+.tour-card .tour-skip:hover{ color: var(--text-muted); }
+.tour-card .tour-nav{ display: flex; gap: 8px; }
+.tour-card .tour-prev{ font-size: 12px; color: var(--text-muted); padding: 5px 10px; border-radius: 3px; }
+.tour-card .tour-prev:hover{ background: var(--surface-2); }
+.tour-card .tour-next{ font-size: 12px; font-weight: 500; color: #fff; background: var(--accent); padding: 5px 13px; border-radius: 3px; }
+.tour-card .tour-next:hover{ background: var(--accent-hover); }
+
+/* ---------- TOOLTIP (data-tip) ---------- */
+.tip-bubble{
+  position: fixed; z-index: 10001; display: none; max-width: 240px;
+  padding: 6px 9px; background: var(--text); color: #fff;
+  font: 500 11.5px/1.4 var(--font-ui); border-radius: 4px;
+  pointer-events: none; box-shadow: 0 4px 14px rgba(0,0,0,0.22);
+}
+
+/* Ação destrutiva (excluir artigo) */
+.btn-danger{
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--err-line);
+  color: var(--err);
+  font-size: 12.5px;
+  font-weight: 500;
+  border-radius: 3px;
+  background: var(--surface);
+}
+.btn-danger:hover{ background: var(--err); color: #fff; border-color: var(--err); }
+.btn-danger:disabled{ opacity: 0.45; cursor: not-allowed; background: var(--surface); color: var(--err); }
+/* "Zona de perigo" no rodapé das ações de fechamento */
+.ca-row.ca-danger{ border-top: 1px dashed var(--border-strong); margin-top: 6px; padding-top: 14px; }
+.ca-row.ca-danger .ca-title{ color: var(--err); }
+/* Aviso do modal de confirmação de exclusão */
+.del-warn{
+  padding: 12px 14px;
+  background: var(--err-soft);
+  border-left: 3px solid var(--err);
+  border-radius: 3px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
 /* ==========================================================================
    COMPARAÇÃO ATUAL × SUGERIDA
    ========================================================================== */

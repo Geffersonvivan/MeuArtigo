@@ -121,6 +121,29 @@ def sincronizar_disco(article: Article, *, bump_versao: bool = False) -> Article
     return article
 
 
+def excluir_artigo(article: Article) -> dict:
+    """Exclui o artigo por completo: apaga a pasta física e o registro (cascade nas
+    seções/parágrafos/fontes/versões). IRREVERSÍVEL.
+
+    Proteção: só remove diretórios que estejam realmente DENTRO de ARTIGOS_ROOT —
+    nunca a raiz nem um caminho fora dela.
+    """
+    info = {"pk": article.pk, "titulo": article.titulo}
+    root = Path(settings.ARTIGOS_ROOT).resolve()
+    try:
+        alvo = Path(article.pasta).resolve()
+        if alvo.is_dir() and alvo != root and root in alvo.parents:
+            shutil.rmtree(alvo)
+            area_dir = alvo.parent  # remove a pasta da área se ficou vazia
+            if area_dir != root and area_dir.is_dir() and not any(area_dir.iterdir()):
+                area_dir.rmdir()
+    except (OSError, ValueError):
+        pass  # pasta ausente/erro não impede a remoção do registro (banco é a verdade)
+    with transaction.atomic():
+        article.delete()
+    return info
+
+
 def salvar_rascunho(article: Article, nome: str, texto: str) -> Path:
     """Grava um intermediário do pipeline em rascunhos/<nome> (PROJETO.md §6).
 

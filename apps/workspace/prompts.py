@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 EDITOR_SYSTEM = (
-    "Você edita seções de artigos jurídicos. Reescreva SOMENTE a seção pedida, aplicando a "
+    "Você edita seções de artigos especializados. Reescreva SOMENTE a seção pedida, aplicando a "
     "instrução do autor e mantendo coerência com o restante do artigo e com o contexto/ideia. "
-    "Regras: não invente citações, leis ou jurisprudência; preserve marcadores [[ref:ID]] "
+    "Regras: não invente citações nem fatos; preserve marcadores [[ref:ID]] "
     "existentes; escreva em português do Brasil, em Markdown. Devolva APENAS o Markdown da "
     "seção (com o mesmo nível de cabeçalho), sem comentários nem cercas de código."
 )
 
 
 REESCRITA_SYSTEM = (
-    "Você é o Redator: reescreve UM parágrafo de um artigo jurídico, sob comando do autor. "
+    "Você é o Redator: reescreve UM parágrafo de um artigo, sob comando do autor. "
     "Aplique a instrução mantendo o sentido e a coerência com o artigo. Preserve os marcadores "
     "[[ref:ID]] existentes e NÃO invente citações. Devolva SOMENTE o parágrafo reescrito, em "
     "texto corrido, sem aspas, sem título e sem comentários."

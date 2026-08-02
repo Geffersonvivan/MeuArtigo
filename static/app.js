@@ -313,13 +313,13 @@ function renderDoc(){
           </span>
           <div class="p-text">${p.html}</div>
           <div class="p-actions">
-            <button class="p-action" data-act="comment" aria-label="Comentar">
+            <button class="p-action" data-act="comment" aria-label="Comentar" data-tip="Comentar neste parágrafo">
               <svg class="i" viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H8l-4 4V5a2 2 0 012-2h13a2 2 0 012 2v10z"/></svg>
             </button>
-            <button class="p-action" data-act="rewrite" aria-label="Reescrever">
+            <button class="p-action" data-act="rewrite" aria-label="Reescrever" data-tip="Reescrever com o Redator (você aceita ou rejeita)">
               <svg class="i" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
             </button>
-            <button class="p-action" data-act="lock" aria-label="Travar">
+            <button class="p-action" data-act="lock" aria-label="Travar" data-tip="Travar o parágrafo (protege de edição)">
               <svg class="i" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="1"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>
             </button>
           </div>
@@ -345,7 +345,7 @@ function renderDoc(){
           <div class="rewrite-foot">
             <span class="rewrite-hint role-hint">
               <span class="rh-dot redator"></span>
-              Redator · <span class="rh-model">${state.models.redator}</span> · ~<span class="rh-cost">${fmtBRL(costOf('reescrever')).replace('R$ ','R$&nbsp;')}</span>
+              Redator · <span class="rh-model">${state.models.redator}</span> · ~<span class="rh-cost">${fmtBRL(costOf('reescrever'))}</span>
             </span>
             <button class="btn-primary" data-act="do-rewrite">
               <svg class="i" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
@@ -498,7 +498,7 @@ function renderMarginNotes(){
         <div class="m-body">${n.body}</div>
         <div class="m-source">${srcTag}</div>
         <div class="m-actions">
-          <button class="fix" data-fix-action="${n.fixAction}" title="${hint}">Corrigir</button>
+          <button class="fix" data-fix-action="${n.fixAction}" data-fix-instrucao="${(n.fixInstrucao || '').replace(/"/g, '&quot;')}" title="${hint}">Corrigir</button>
           <button class="ignore">Ignorar</button>
         </div>
         ${act ? `<div class="m-hint">${hint}</div>` : ''}
@@ -630,7 +630,7 @@ function initParagraphInteractions(){
   });
 }
 
-function openRewrite(pid){
+function openRewrite(pid, prefill){
   closeRewrite();
   const rewriteEl = $(`.rewrite[data-for="${pid}"]`);
   if (!rewriteEl) return;
@@ -643,8 +643,10 @@ function openRewrite(pid){
   rewriteEl.classList.add('open');
   p.classList.add('selected');
   state.openRewrite = pid;
-  // Foca no textarea
-  setTimeout(() => rewriteEl.querySelector('.rewrite-input').focus(), 50);
+  // Vindo de um aviso ("Corrigir"), já preenche a instrução — vira um clique.
+  const ta = rewriteEl.querySelector('.rewrite-input');
+  if (ta) ta.value = prefill || '';
+  setTimeout(() => { if (ta) ta.focus(); }, 50);
   positionMarginNotes();
 }
 
@@ -1229,6 +1231,7 @@ function openScreen(name){
   // Telas dinâmicas (dependem do estado)
   let markup;
   if (name === 'close') markup = SCREENS_DYN.close();
+  else if (name === 'deleteConfirm') markup = SCREENS_DYN.deleteConfirm();
   else if (name === 'modelSettings') markup = SCREENS_DYN.modelSettings();
   else if (name === 'export') markup = SCREENS_DYN.export();
   else markup = SCREENS[name] || '<div class="modal-body">Tela não encontrada.</div>';
@@ -1240,6 +1243,7 @@ function openScreen(name){
   // Wire-up de botões específicos da tela
   modal.querySelectorAll('[data-close]').forEach(b => b.addEventListener('click', closeModal));
   if (name === 'wizard') wireWizard();
+  if (name === 'deleteConfirm') wireDeleteConfirm();
   if (name === 'structure') wireStructure();
   if (name === 'sources') wireSources();
   if (name === 'close') wireCloseArticle();
@@ -1678,9 +1682,44 @@ const SCREENS_DYN = {
               <button class="btn-secondary" data-close-act="export">Exportar…</button>
             </div>
 
+            <div class="ca-row ca-danger">
+              <div class="ca-info">
+                <div class="ca-title">Excluir artigo</div>
+                <div class="ca-desc">Apaga o texto, as fontes, as versões e a pasta física. <b>Permanente, sem desfazer.</b></div>
+              </div>
+              <button class="btn-danger" data-close-act="delete-open">Excluir…</button>
+            </div>
+
           </div>
         </div>
 
+      </div>
+    `;
+  },
+
+  deleteConfirm(){
+    const title = (window.__DATA__ && window.__DATA__.topbar && window.__DATA__.topbar.title) || 'este artigo';
+    return `
+      <div class="modal-head">
+        <h2>Excluir artigo</h2>
+        <button class="btn-ghost" data-close>Cancelar</button>
+      </div>
+      <div class="modal-body">
+        <div class="del-warn">
+          Você vai <b>apagar permanentemente</b> "<b>${escapeHtml(title)}</b>": o texto, as fontes,
+          as versões e a pasta física do artigo. <b>Isto não pode ser desfeito.</b>
+        </div>
+        <label class="fld" style="margin-top:16px;display:block">
+          <div class="fld-label">Digite <b>EXCLUIR</b> para confirmar</div>
+          <input class="fld-input" id="del-confirm-input" placeholder="EXCLUIR" autocomplete="off"/>
+        </label>
+      </div>
+      <div class="modal-foot">
+        <span class="meta"></span>
+        <div class="actions">
+          <button class="btn-ghost" data-close>Cancelar</button>
+          <button class="btn-danger" id="del-confirm-btn" disabled>Excluir definitivamente</button>
+        </div>
       </div>
     `;
   },
@@ -1838,11 +1877,38 @@ function persistStatus(acao){
   }).catch(function(){});
 }
 
+function wireDeleteConfirm(){
+  const modal = $('#modal');
+  const input = $('#del-confirm-input', modal);
+  const btn = $('#del-confirm-btn', modal);
+  if (!input || !btn) return;
+  input.addEventListener('input', () => {
+    btn.disabled = input.value.trim().toUpperCase() !== 'EXCLUIR';
+  });
+  btn.addEventListener('click', () => {
+    if (btn.disabled) return;
+    const pk = window.__DATA__ && window.__DATA__.articleId;
+    if (!pk) return;
+    btn.disabled = true; btn.textContent = 'Excluindo…';
+    fetch('/workspace/article/' + pk + '/delete/', {
+      method: 'POST', headers: { 'X-CSRFToken': getCSRF() }
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (d.url){ location.href = d.url; }
+        else { showToast(d.error || 'Falha ao excluir.'); btn.disabled = false; btn.textContent = 'Excluir definitivamente'; }
+      })
+      .catch(() => { showToast('Falha ao excluir.'); btn.disabled = false; btn.textContent = 'Excluir definitivamente'; });
+  });
+  setTimeout(() => input.focus(), 50);
+}
+
 function wireCloseArticle(){
   const modal = $('#modal');
   modal.querySelectorAll('[data-close-act]').forEach(btn => {
     btn.addEventListener('click', () => {
       const act = btn.dataset.closeAct;
+      if (act === 'delete-open'){ openScreen('deleteConfirm'); return; }
       if (act !== 'export') persistStatus(act);
       if (act === 'review'){
         state.status = 'review';
@@ -2275,6 +2341,17 @@ function wireWizard(){
     document.querySelectorAll('datalist[data-areas]').forEach(dl => { dl.innerHTML = opts; });
   }
 
+  // Profundidade do rascunho: o destaque (.selected) segue o cartão clicado.
+  // (Sem isso, "Frases-guia" — que vem com .selected fixo no HTML — ficava sempre marcado.)
+  const depthCards = modal.querySelectorAll('.depth-card');
+  modal.querySelectorAll('.depth-card input[name="depth"]').forEach(inp => {
+    inp.addEventListener('change', () => {
+      depthCards.forEach(c => c.classList.remove('selected'));
+      const card = inp.closest('.depth-card');
+      if (card) card.classList.add('selected');
+    });
+  });
+
   const real = (typeof window !== 'undefined' && window.__DATA__);
   nextBtn.addEventListener('click', () => {
     if (real){
@@ -2285,6 +2362,9 @@ function wireWizard(){
         num_paginas: (wzField('Nº de páginas')||{}).value || '1',
         num_linhas: (wzField('Linhas')||{}).value || '10',
         estilo: (wzField('Estilo')||{}).value || '',
+        estilo_citacao: (wzField('Estilo de citação')||{}).value || '',
+        perfil_layout: (wzField('Perfil')||{}).value || '',
+        publico_alvo: (wzField('Público')||{}).value || '',
         profundidade: (modal.querySelector('input[name="depth"]:checked')||{}).value || 'frases'
       };
       if (!params.assunto){ showToast('Informe o assunto.'); return; }
@@ -2435,7 +2515,7 @@ function initMarginActions(){
         switchContextTab('fontes');
         showToast(`Pesquisador (${state.models.pesquisador}) buscando fonte…`);
       } else {
-        openRewrite(pid);
+        openRewrite(pid, fix.dataset.fixInstrucao || '');
         showToast(`Redator (${state.models.redator}) reescrevendo este par\u00e1grafo…`);
       }
       note.style.opacity = '0.5';
@@ -2830,11 +2910,144 @@ function initUserMenuActions(){
   });
   const logout = $('#btn-logout');
   if (logout) logout.addEventListener('click', goToLanding);
+  const tour = $('#menu-tour');
+  if (tour) tour.addEventListener('click', () => { closeUserMenu(); startTour(); });
 }
 
 // -------------------------------------------------------------------
 // BOOT WRAPPER: chama boot() original e depois adiciona init de LP/login
 // -------------------------------------------------------------------
+// ===================================================================
+// TOUR GUIADO + TOOLTIPS (onboarding — adição ao Modelo_Template)
+// ===================================================================
+const TOUR_STEPS = [
+  { sel: '.sidebar', place: 'right', title: 'Seu acervo',
+    body: 'Aqui ficam seus artigos (por área), a busca em todo o acervo e o botão "Novo artigo" para começar. Embaixo, um atalho para as fontes pendentes.' },
+  { sel: '#ruler', place: 'right', title: 'Régua de extensão',
+    body: 'Cada bloco é uma seção do artigo. Mostra as linhas usadas em relação à meta — a barrinha fica âmbar se a seção passar do tamanho planejado. É o mini-mapa do tamanho do texto.' },
+  { sel: '#doc', place: 'right', title: 'Edição por parágrafo',
+    body: 'O texto é seu — a IA só escreve sob comando. Passe o mouse num parágrafo para ver os ícones: comentar, reescrever (o Redator sugere e você aceita/rejeita) e travar.' },
+  { sel: '#notes-col', place: 'left', title: 'Avisos de margem',
+    body: 'Verificações automáticas e grátis (sem IA): afirmação sem fonte, termo fora do glossário, extensão… Cada aviso traz "Corrigir" (chama a IA) ou "Ignorar".' },
+  { sel: '.context', place: 'left', title: 'Painel de contexto',
+    body: 'Pipeline: o que cada IA (Redator, Pesquisador, Revisor) fez e quanto custou. Fontes: as referências e seus status. Memória: trechos que você já escreveu, para referenciar em vez de repetir.' },
+  { sel: '.topbar', place: 'bottom', title: 'Topo: status, custo e ações',
+    body: 'Nome e status do artigo (Rascunho → Em revisão → Final), o custo da sessão, Exportar e "Fechar artigo" (o checklist que leva à versão final). O "?" reabre este tour quando quiser.' },
+];
+
+let _tourIdx = 0;
+
+function startTour(){
+  if ($('#tour-overlay')) return;
+  const ov = el(`
+    <div id="tour-overlay" class="tour-overlay">
+      <div class="tour-hole" id="tour-hole"></div>
+      <div class="tour-card" id="tour-card">
+        <div class="tour-count"></div>
+        <div class="tour-title"></div>
+        <div class="tour-body"></div>
+        <div class="tour-actions">
+          <button class="tour-skip" type="button">Pular tour</button>
+          <div class="tour-nav">
+            <button class="tour-prev" type="button">Anterior</button>
+            <button class="tour-next" type="button">Próximo</button>
+          </div>
+        </div>
+      </div>
+    </div>`);
+  document.body.appendChild(ov);
+  $('.tour-skip', ov).onclick = endTour;
+  $('.tour-prev', ov).onclick = () => showTourStep(_tourIdx - 1);
+  $('.tour-next', ov).onclick = () => { if (_tourIdx >= TOUR_STEPS.length - 1) endTour(); else showTourStep(_tourIdx + 1); };
+  window.addEventListener('keydown', _tourKey);
+  showTourStep(0);
+}
+
+function _tourKey(e){
+  if (e.key === 'Escape') endTour();
+  else if (e.key === 'ArrowRight'){ if (_tourIdx >= TOUR_STEPS.length - 1) endTour(); else showTourStep(_tourIdx + 1); }
+  else if (e.key === 'ArrowLeft') showTourStep(_tourIdx - 1);
+}
+
+function showTourStep(i){
+  i = Math.max(0, Math.min(i, TOUR_STEPS.length - 1));
+  _tourIdx = i;
+  const step = TOUR_STEPS[i];
+  const scope = $('#workspace-view') || document;
+  const target = scope.querySelector(step.sel);
+  const hole = $('#tour-hole'), card = $('#tour-card');
+  if (!target){ if (i < TOUR_STEPS.length - 1) return showTourStep(i + 1); return endTour(); }
+  target.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  setTimeout(() => {
+    if (!$('#tour-hole')) return;  // tour foi fechado durante o scroll
+    const r = target.getBoundingClientRect(), pad = 6;
+    hole.style.left = (r.left - pad) + 'px';
+    hole.style.top = (r.top - pad) + 'px';
+    hole.style.width = (r.width + pad * 2) + 'px';
+    hole.style.height = (r.height + pad * 2) + 'px';
+    card.querySelector('.tour-count').textContent = (i + 1) + ' de ' + TOUR_STEPS.length;
+    card.querySelector('.tour-title').textContent = step.title;
+    card.querySelector('.tour-body').textContent = step.body;
+    card.querySelector('.tour-prev').style.visibility = i === 0 ? 'hidden' : 'visible';
+    card.querySelector('.tour-next').textContent = i === TOUR_STEPS.length - 1 ? 'Concluir' : 'Próximo';
+    _positionTourCard(card, r, step.place);
+  }, 280);
+}
+
+function _positionTourCard(card, r, place){
+  const cw = 300, ch = card.offsetHeight || 170, m = 14;
+  let left, top;
+  if (place === 'left'){ left = r.left - cw - m; top = r.top; }
+  else if (place === 'bottom'){ left = r.left; top = r.bottom + m; }
+  else { left = r.right + m; top = r.top; }
+  left = Math.max(m, Math.min(left, window.innerWidth - cw - m));
+  top = Math.max(m, Math.min(top, window.innerHeight - ch - m));
+  card.style.left = left + 'px';
+  card.style.top = top + 'px';
+}
+
+function endTour(){
+  window.removeEventListener('keydown', _tourKey);
+  const o = $('#tour-overlay'); if (o) o.remove();
+  try { localStorage.setItem('meuartigo_tour_v1', '1'); } catch(e){}
+}
+
+function wireHelp(){
+  const b = $('#btn-help');
+  if (b) b.addEventListener('click', startTour);
+}
+
+function maybeAutoTour(){
+  if (document.body.dataset.view !== 'workspace') return;
+  let seen = false;
+  try { seen = localStorage.getItem('meuartigo_tour_v1') === '1'; } catch(e){}
+  if (!seen) setTimeout(() => { if (document.body.dataset.view === 'workspace' && !$('#tour-overlay')) startTour(); }, 900);
+}
+
+// Tooltip estilizado único que segue os elementos [data-tip]
+function initTooltips(){
+  let tip = null, hideT = null;
+  const ensure = () => { if (!tip){ tip = el('<div class="tip-bubble"></div>'); document.body.appendChild(tip); } return tip; };
+  document.addEventListener('mouseover', (e) => {
+    const t = e.target.closest && e.target.closest('[data-tip]');
+    if (!t) return;
+    clearTimeout(hideT);
+    const b = ensure();
+    b.textContent = t.getAttribute('data-tip');
+    b.style.display = 'block';
+    const r = t.getBoundingClientRect(), br = b.getBoundingClientRect();
+    let left = r.left + r.width / 2 - br.width / 2;
+    let top = r.top - br.height - 8;
+    if (top < 4) top = r.bottom + 8;  // vira pra baixo se não couber em cima
+    left = Math.max(4, Math.min(left, window.innerWidth - br.width - 4));
+    b.style.left = left + 'px'; b.style.top = top + 'px';
+  });
+  document.addEventListener('mouseout', (e) => {
+    const t = e.target.closest && e.target.closest('[data-tip]');
+    if (t && tip) hideT = setTimeout(() => { if (tip) tip.style.display = 'none'; }, 60);
+  });
+}
+
 const originalBoot = boot;
 boot = function(){
   originalBoot();
@@ -2843,6 +3056,9 @@ boot = function(){
   if (document.body.dataset.view === 'landing') populateLandingPreviews();
   initLandingActions();
   initUserMenuActions();
+  initTooltips();
+  wireHelp();
+  maybeAutoTour();
 };
 
 if (document.readyState === 'loading'){

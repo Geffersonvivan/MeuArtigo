@@ -7,14 +7,15 @@
 Aplicação web **Python + Django** para escrever artigos com apoio de **múltiplas LLMs**.
 Cada artigo vive em sua **pasta física** (`.md` versionável), mas todos ficam conectados
 por uma **camada de memória** (RAG) que registra o que já foi dito, os conceitos tratados
-e as fontes usadas. Caso de uso inicial: artigos de **Direito Eleitoral**.
+e as fontes usadas. Funciona para **qualquer área** — os prompts se adaptam à `área` do
+artigo. O caso de uso inicial foi **Direito Eleitoral**, que segue plenamente suportado.
 
 ## Decisões fixas (não reabrir sem pedido explícito)
 - **Backend:** Django 5.x · **Banco:** PostgreSQL 16 + `pgvector`
 - **Armazenamento:** híbrido — pastas físicas `.md` (Git) + metadados/embeddings no Postgres
 - **LLMs e papéis** (OpenAI/GPT foi descartado — ver memória do projeto):
   - **Perplexity** → pesquisa + fontes reais/atuais **e** revisão/fato-check (2ª família, web-grounded)
-  - **Claude** → estrutura, redação e edição final (estilo/juridiquês)
+  - **Claude** → estrutura, redação e edição final (adapta estilo e tom à área)
 - **Embeddings:** Voyage AI `voyage-3.5` (1024 dims) — parceiro recomendado pela Anthropic.
   (Claude e Perplexity não geram embeddings.) OpenAI/GPT segue só para brainstorm/revisão.
 - **Memória:** começar por RAG; grafo de entidades é evolução (integra com `/graphify`)
@@ -33,9 +34,11 @@ Estilos: `aprofundado` · `raso` · `intelectual` · `popular` · `juridiquês` 
 ## Regras de ouro (invioláveis)
 1. **Nunca inventar citação.** A LLM de redação só cita fontes que já existem como
    `Reference` **verificada**, via marcador `[[ref:ID]]`; o sistema resolve para ABNT.
-2. **Toda fonte passa por verificação** antes do texto final: existência da URL
-   (domínios oficiais `planalto.gov.br`, `tse.jus.br`, `stf.jus.br`) → conferência do trecho
-   na página → cross-check por 2ª LLM. Fontes `duvidosa`/`inexistente` não entram no texto.
+2. **Toda fonte passa por verificação** antes do texto final: existência da URL →
+   conferência do trecho na página → cross-check por 2ª LLM. Domínios **confiáveis** aumentam
+   a confiança — oficiais (`planalto.gov.br`, `tse.jus.br`, `stf.jus.br`) para Direito **e**
+   acadêmicos/institucionais (`.edu`, `.edu.br`, `scielo`, `who.int`, …) para as demais áreas
+   (ver `apps/memory/verify.py`). Fontes `duvidosa`/`inexistente` não entram no texto.
 3. **Citação em ABNT** (NBR 6023 referências, NBR 10520 citações); registrar sempre
    `data de acesso` para fontes online.
 4. **Chaves de API** só em `.env`, nunca no Git.
@@ -66,5 +69,6 @@ artigos/                 # pastas físicas: <area-slug>/<assunto-slug>/{artigo.m
 ## Convenções
 - Nunca chamar API de provedor direto no código de negócio — sempre via interface `LLMProvider`.
 - Slugs de área/assunto definem o caminho da pasta física.
+- **Prompts se adaptam à `área` do artigo — nunca fixar "jurídico"** (o app é agnóstico de área).
 - Logar tokens/custo por etapa do pipeline (Perplexity/Claude somam custo).
-- Datar tudo — Direito Eleitoral muda rápido.
+- Datar tudo — muitas áreas atualizam rápido (Direito Eleitoral especialmente).

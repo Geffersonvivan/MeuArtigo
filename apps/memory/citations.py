@@ -61,8 +61,14 @@ def citacao_no_corpo(ref: Reference) -> str:
     return f"({_sobrenome(ref)}, {_ano(ref)})"
 
 
-def resolver_marcadores(texto: str, refs: dict[int, Reference]) -> tuple[str, list[Reference]]:
-    """Substitui [[ref:ID]] pela citação autor-data e devolve (texto, refs_usadas em ordem).
+def resolver_marcadores(texto: str, refs: dict[int, Reference], *,
+                        modo: str = "autor_data",
+                        numeros: dict[int, int] | None = None) -> tuple[str, list[Reference]]:
+    """Substitui [[ref:ID]] pela citação e devolve (texto, refs_usadas em ordem).
+
+    `modo`: 'autor_data' → "(SOBRENOME, ano)" no corpo (NBR 10520);
+            'nota_rodape' → número "[N]" no corpo (numeração global via `numeros`,
+            um dict compartilhado entre as seções para manter a ordem de aparição).
 
     Marcadores para IDs inexistentes ou não verificados são removidos (regra de ouro:
     nunca resolver para uma fonte que não está `ok`)."""
@@ -77,9 +83,21 @@ def resolver_marcadores(texto: str, refs: dict[int, Reference]) -> tuple[str, li
         if rid not in vistos:
             vistos.add(rid)
             usados.append(ref)
+        if modo == "nota_rodape" and numeros is not None:
+            if rid not in numeros:
+                numeros[rid] = len(numeros) + 1
+            return f"[{numeros[rid]}]"
         return citacao_no_corpo(ref)
 
     return MARCADOR_RE.sub(_sub, texto), usados
+
+
+def gerar_notas_md(refs_ordenadas: list[Reference], *, titulo: str = "Notas") -> str:
+    """Lista NUMERADA (ordem de aparição) das referências — para o estilo nota de rodapé."""
+    if not refs_ordenadas:
+        return ""
+    itens = [f"{i + 1}. {formatar_abnt(r)}" for i, r in enumerate(refs_ordenadas)]
+    return f"## {titulo}\n\n" + "\n\n".join(itens) + "\n"
 
 
 def gerar_referencias_md(refs: list[Reference], *, titulo: str = "Referências") -> str:

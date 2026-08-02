@@ -11,21 +11,38 @@ import re
 
 import markdown as md_lib
 
-from apps.memory.citations import gerar_referencias_md, resolver_marcadores
+from apps.memory.citations import gerar_notas_md, gerar_referencias_md, resolver_marcadores
+
+#: perfis de layout do export (fonte / tamanho / entrelinha).
+LAYOUT_PROFILES = {
+    "abnt":      {"docx_font": "Times New Roman", "pdf_font": "Times, serif",              "size": 12, "lh": 1.5},
+    "editorial": {"docx_font": "Georgia",         "pdf_font": "Georgia, serif",            "size": 11, "lh": 1.4},
+    "web":       {"docx_font": "Arial",           "pdf_font": "Arial, Helvetica, sans-serif", "size": 14, "lh": 1.6},
+}
+
+
+def _layout(article) -> dict:
+    return LAYOUT_PROFILES.get(getattr(article, "perfil_layout", "abnt") or "abnt", LAYOUT_PROFILES["abnt"])
 
 
 def resolved_markdown(article) -> str:
     refs = {r.pk: r for r in article.references.filter(verificada="ok")}
+    modo = getattr(article, "estilo_citacao", "autor_data") or "autor_data"
+    numeros: dict[int, int] | None = {} if modo == "nota_rodape" else None
     partes = [f"# {article.titulo}"]
     usados = []
     for sec in article.sections.all():
         partes.append(f"## {sec.titulo}")
-        resolvido, u = resolver_marcadores(sec.render_corpo(), refs)
+        resolvido, u = resolver_marcadores(sec.render_corpo(), refs, modo=modo, numeros=numeros)
         usados.extend(u)
         if resolvido.strip():
             partes.append(resolvido.strip())
     md = "\n\n".join(partes).strip() + "\n"
-    if usados:
+    if modo == "nota_rodape" and numeros:
+        # notas numeradas na ordem de aparição
+        ordem = [refs[rid] for rid, _ in sorted(numeros.items(), key=lambda kv: kv[1]) if rid in refs]
+        md += "\n\n" + gerar_notas_md(ordem)
+    elif usados:
         md += "\n\n" + gerar_referencias_md(usados)
     if article.status != "final":
         md = "> **RASCUNHO — não citar**\n\n" + md
@@ -40,7 +57,12 @@ def to_docx(article) -> bytes:
     from docx import Document
     from docx.shared import Pt
 
+    lay = _layout(article)
     doc = Document()
+    normal = doc.styles["Normal"]
+    normal.font.name = lay["docx_font"]
+    normal.font.size = Pt(lay["size"])
+    normal.paragraph_format.line_spacing = lay["lh"]
     for raw in resolved_markdown(article).splitlines():
         line = raw.rstrip()
         if not line:
@@ -64,10 +86,11 @@ def to_docx(article) -> bytes:
 def to_pdf(article) -> bytes:
     from xhtml2pdf import pisa
 
+    lay = _layout(article)
     corpo = md_lib.markdown(resolved_markdown(article), extensions=["extra"])
     html = f"""<html><head><meta charset="utf-8"><style>
       @page {{ margin: 2.5cm; }}
-      body {{ font-family: Times, serif; font-size: 12pt; line-height: 1.5; color: #111; }}
+      body {{ font-family: {lay['pdf_font']}; font-size: {lay['size']}pt; line-height: {lay['lh']}; color: #111; }}
       h1 {{ font-size: 20pt; }} h2 {{ font-size: 15pt; margin-top: 18pt; }}
       blockquote {{ color: #b45309; font-weight: bold; }}
       p {{ text-align: justify; }}

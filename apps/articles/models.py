@@ -59,6 +59,11 @@ class Article(models.Model):
 
     # Briefing/ideia do autor — injetado em todo prompt do workspace (Fase 6).
     contexto = models.TextField("contexto/ideia", blank=True)
+    # Para quem o artigo é escrito — injetado nos prompts de estrutura/redação.
+    publico_alvo = models.CharField("público-alvo", max_length=200, blank=True)
+    # Formatação do export: estilo de citação e perfil de layout.
+    estilo_citacao = models.CharField("estilo de citação", max_length=20, default="autor_data")
+    perfil_layout = models.CharField("perfil de layout", max_length=20, default="abnt")
 
     # Organização (sidebar) e versionamento.
     folder = models.ForeignKey(

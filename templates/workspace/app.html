@@ -124,17 +124,20 @@ window.__tweaks = /*EDITMODE-BEGIN*/{
       <span class="status-pill draft" id="status-pill">Rascunho <span class="v" id="status-version">v2</span></span>
     </div>
     <div class="top-right">
-      <div class="session-cost"><span class="label">sessão</span>R$ 3,42</div>
-      <button class="icon-btn" id="btn-close-article" title="Fechar artigo">
+      <div class="session-cost" data-tip="Custo acumulado de IA nesta sessão (soma de todas as chamadas)."><span class="label">sessão</span>R$ 3,42</div>
+      <button class="icon-btn" id="btn-close-article" data-tip="Checklist de qualidade e status: Rascunho → Em revisão → Final.">
         <svg class="i" viewBox="0 0 24 24"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
         Fechar artigo
       </button>
-      <button class="icon-btn" id="btn-export" title="Exportar">
+      <button class="icon-btn" id="btn-export" data-tip="Baixar o artigo em PDF, DOCX ou Markdown.">
         <svg class="i" viewBox="0 0 24 24"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
         Exportar
       </button>
-      <button class="icon-btn icon-only" title="Histórico" id="btn-history">
+      <button class="icon-btn icon-only" data-tip="Histórico de versões (comparar snapshots)." id="btn-history">
         <svg class="i" viewBox="0 0 24 24"><path d="M3 12a9 9 0 109-9M3 12l3-3M3 12l3 3M12 7v5l3 2"/></svg>
+      </button>
+      <button class="icon-btn icon-only" data-tip="Tour guiado das funcionalidades." id="btn-help">
+        <svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 114 2c-.9.7-1.5 1.2-1.5 2.5"/><line x1="12" y1="17.5" x2="12" y2="17.5"/></svg>
       </button>
 
       <div class="user-wrap" id="user-wrap">
@@ -143,6 +146,7 @@ window.__tweaks = /*EDITMODE-BEGIN*/{
           <div class="user-name">Renato Salgado</div>
           <div class="user-email">renato@salgado.adv.br</div>
           <button role="menuitem">Ajustes</button>
+          <button role="menuitem" id="menu-tour">Rever tour guiado</button>
           <div class="sep"></div>
           <button role="menuitem" class="logout" id="btn-logout">Sair</button>
         </div>
@@ -194,7 +198,7 @@ window.__tweaks = /*EDITMODE-BEGIN*/{
       </div>
 
       <div class="sidebar-foot">
-        <button class="pending-link" id="btn-sources-pending">
+        <button class="pending-link" id="btn-sources-pending" data-tip="Fontes duvidosas/não localizadas que ainda precisam de decisão.">
           <svg class="i" style="width:12px;height:12px" viewBox="0 0 24 24"><path d="M12 9v4m0 4h.01M4.93 19h14.14a2 2 0 001.75-2.97l-7.07-12.5a2 2 0 00-3.5 0L3.18 16.03A2 2 0 004.93 19z"/></svg>
           Fontes pendentes
           <span class="pending-badge">3</span>
@@ -212,7 +216,7 @@ window.__tweaks = /*EDITMODE-BEGIN*/{
       <div class="editor-inner">
 
         <!-- ===== RÉGUA ===== -->
-        <div class="ruler" id="ruler">
+        <div class="ruler" id="ruler" data-tip="Régua de extensão: cada bloco é uma seção; mostra as linhas usadas/meta. A barra fica âmbar se passar da meta.">
           <!-- preenchido por JS -->
         </div>
 

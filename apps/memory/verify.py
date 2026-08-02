@@ -20,10 +20,15 @@ from django.utils import timezone
 from .citations import formatar_abnt
 from .models import Reference, StatusVerif
 
-#: domínios oficiais que aumentam a confiança da fonte (PROJETO.md §9.2).
+#: domínios CONFIÁVEIS que aumentam a confiança da fonte. Inclui oficiais (gov/justiça,
+#: úteis p/ Direito) e também acadêmicos/institucionais — para artigos de QUALQUER área.
 DOMINIOS_OFICIAIS = (
+    # oficiais (governo / justiça)
     "planalto.gov.br", "tse.jus.br", "stf.jus.br", "stj.jus.br",
     "senado.leg.br", "camara.leg.br", "in.gov.br", "gov.br", "jus.br",
+    # acadêmicos / institucionais / referência (qualquer área)
+    "edu.br", "edu", "ac.uk", "scielo.br", "scielo.org", "scholar.google.com",
+    "ibge.gov.br", "fiocruz.br", "who.int", "un.org", "oecd.org", "org.br",
 )
 
 _UA = {"User-Agent": "Mozilla/5.0 (MeuArtigo/1.0; verificador de fontes)"}
@@ -84,7 +89,7 @@ def verificar_referencia(ref: Reference, *, checar_conteudo: bool = True) -> Ref
     else:
         existe, pagina = _buscar_pagina(ref.url)
         oficial = e_oficial(ref.url)
-        notas.append("domínio oficial" if oficial else "domínio não oficial")
+        notas.append("domínio confiável" if oficial else "domínio não reconhecido")
 
         if not existe:
             ref.verificada = StatusVerif.INEXISTENTE

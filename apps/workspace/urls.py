@@ -19,6 +19,7 @@ urlpatterns = [
     path("article/create/", views.workspace_create, name="workspace_create"),
     path("overlap/", views.workspace_overlap, name="workspace_overlap"),
     path("article/<int:pk>/status/", views.article_status, name="article_status"),
+    path("article/<int:pk>/delete/", views.article_delete, name="article_delete"),
     path("reference/<int:pk>/verify/", views.reference_verify, name="reference_verify"),
     path("reference/<int:pk>/decide/", views.reference_decide, name="reference_decide"),
     path("reference/<int:pk>/buscar/", views.reference_buscar, name="reference_buscar"),

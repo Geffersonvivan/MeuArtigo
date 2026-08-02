@@ -138,12 +138,20 @@ def build_entidades_prompt(*, texto: str) -> tuple[str, str]:
 
 
 def build_pesquisa_prompt(*, assunto: str, area: str) -> tuple[str, str]:
+    area_txt = area or "conhecimento geral"
+    system = (
+        f"Você é um pesquisador especializado na área de {area_txt}. Levante o estado atual do "
+        "tema com fontes reais e atuais (web): principais referências, dados, normas ou estudos "
+        "relevantes e pontos controversos. Priorize fontes oficiais, institucionais e acadêmicas "
+        "confiáveis. Seja objetivo e estruturado; não redija o artigo, apenas reúna o material e "
+        "as fontes."
+    )
     user = (
         f"Tema: {assunto}\nÁrea: {area}\n\n"
-        "Levante os principais pontos, normas vigentes, jurisprudência e controvérsias atuais "
-        "sobre esse tema, com as fontes, para embasar um artigo."
+        "Levante os principais pontos, referências e controvérsias atuais sobre esse tema, "
+        "com as fontes, para embasar um artigo."
     )
-    return PESQUISA_SYSTEM, user
+    return system, user
 
 
 def build_estrutura_prompt(*, titulo: str, assunto: str, area: str, num_paginas: int,

@@ -153,12 +153,15 @@ def _gerar_estrutura(article):
     from apps.articles.models import Section
     total = article.num_paginas * article.num_linhas
     provider = get_provider("anthropic")
-    system = ("Você é o Arquiteto: propõe a estrutura de um artigo jurídico. Responda SOMENTE "
+    area = article.area or "conhecimento geral"
+    system = (f"Você é o Arquiteto: propõe a estrutura de um artigo especializado da área de "
+              f"{area}. Responda SOMENTE "
               'JSON válido: {"secoes":[{"titulo":"...","resumo":"...","linhas":N}]}. '
               "O 'resumo' deve ter no máximo 12 palavras. Entre 4 e 8 seções, sem redigir o "
               f"conteúdo. Some os 'linhas' para aproximadamente {total}.")
     user = (f"Assunto: {article.assunto}\nÁrea: {article.area}\n"
             f"Estilo: {article.get_estilo_display()}\n"
+            + (f"Público-alvo: {article.publico_alvo}\n" if article.publico_alvo else "")
             + (f"Tese: {article.contexto}\n" if article.contexto else "")
             + f"Extensão-alvo: {article.num_paginas} páginas × {article.num_linhas} linhas.")
     res = provider.generate(system=system, prompt=user, max_tokens=4000,
@@ -206,8 +209,14 @@ def _redacao_prompts(article, sec, pesquisa_txt: str = "", n_paras: int = 2):
     """(system, user) para o Redator escrever UMA seção, citando só fontes verificadas."""
     refs_ok = list(article.references.filter(verificada="ok"))
     refs_lst = "\n".join(f'- [[ref:{r.pk}]] {r.titulo}' for r in refs_ok) or "(nenhuma)"
-    system = ("Você é o Redator: escreve UMA seção de artigo jurídico. Cite fontes apenas via "
-              "[[ref:ID]] usando os IDs fornecidos; não invente citações. "
+    from apps.llm.prompts import ESTILO_INSTRUCTIONS
+    area = article.area or "conhecimento geral"
+    estilo_desc = ESTILO_INSTRUCTIONS.get(article.estilo, article.get_estilo_display())
+    publico = (article.publico_alvo or "").strip()
+    system = (f"Você é o Redator: escreve UMA seção de um artigo especializado da área de {area}. "
+              f"ESTILO: {estilo_desc} "
+              + (f"PÚBLICO-ALVO: escreva pensando em {publico}. " if publico else "")
+              + "Cite fontes apenas via [[ref:ID]] usando os IDs fornecidos; não invente citações. "
               f"Escreva {n_paras} parágrafos desenvolvidos. Português do Brasil; devolva só o corpo "
               "(parágrafos separados por linha em branco), sem repetir o título da seção.")
     user = (f"SEÇÃO: {sec.titulo}\nO que cobrir: {sec.resumo}\nMeta: ~{sec.meta_linhas} linhas.\n"
@@ -293,9 +302,21 @@ def workspace_create(request):
         return JsonResponse({"error": str(exc)}, status=409)
     except (ValueError, TypeError) as exc:
         return JsonResponse({"error": str(exc)}, status=400)
+    campos = ["estilo_citacao", "perfil_layout"]
+    # citação: "Autor-data" → autor_data | "Nota de rodapé" → nota_rodape
+    cit = (p.get("estilo_citacao") or "").strip().lower()
+    art.estilo_citacao = "nota_rodape" if cit.startswith("nota") else "autor_data"
+    # layout: casa pelo prefixo do rótulo do wizard
+    lay = (p.get("perfil_layout") or "").strip().lower()
+    art.perfil_layout = ("editorial" if lay.startswith("editorial")
+                         else "web" if lay.startswith("web") else "abnt")
     if p.get("tese"):
-        art.contexto = p["tese"]
-        art.save(update_fields=["contexto", "atualizado_em"])
+        art.contexto = p["tese"].strip()
+        campos.append("contexto")
+    if p.get("publico_alvo"):
+        art.publico_alvo = p["publico_alvo"].strip()[:200]
+        campos.append("publico_alvo")
+    art.save(update_fields=campos + ["atualizado_em"])
     aviso = None
     try:
         # Só a estrutura (rápido). O conteúdo é redigido seção a seção, sob demanda,
@@ -335,6 +356,18 @@ def article_export(request, pk, fmt):
     nome = slugify(article.titulo)[:60] or f"artigo-{article.pk}"
     resp["Content-Disposition"] = f'attachment; filename="{nome}.{ext}"'
     return resp
+
+
+@require_POST
+def article_delete(request, pk):
+    """Exclui o artigo (pasta física + registro em cascata). Devolve a URL do próximo
+    artigo (ou a raiz do workspace) para a UI redirecionar."""
+    from apps.articles.services import excluir_artigo
+    article = get_object_or_404(Article, pk=pk)
+    prox = Article.objects.exclude(pk=pk).order_by("-atualizado_em").first()
+    excluir_artigo(article)
+    url = f"/workspace/app/{prox.pk}/" if prox else "/workspace/app/"
+    return JsonResponse({"ok": True, "url": url})
 
 
 @require_POST
@@ -406,9 +439,10 @@ def reference_buscar(request, pk):
     from apps.memory.models import Reference
     ref = get_object_or_404(Reference, pk=pk)
     provider = get_provider("perplexity")
-    system = ("Você é pesquisador jurídico. Encontre a fonte OFICIAL mais confiável "
-              "(planalto.gov.br, tse.jus.br, stf.jus.br) que sustente a afirmação. "
-              "Responda curto: a melhor fonte e o link.")
+    area = (ref.article.area if ref.article_id else "") or "conhecimento geral"
+    system = (f"Você é pesquisador da área de {area}. Encontre a fonte mais confiável e "
+              "verificável (priorize fontes oficiais, institucionais ou acadêmicas) que "
+              "sustente a afirmação. Responda curto: a melhor fonte e o link.")
     prompt = f"Tema/afirmação: {ref.titulo}. {ref.trecho}".strip()
     try:
         res = provider.generate(system=system, prompt=prompt, max_tokens=400, search_recency="year")

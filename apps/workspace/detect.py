@@ -35,17 +35,23 @@ def detectar_paragrafo(pid: str, texto: str, refs_by_id: dict, glossario: list,
             "fixAction": "buscar_fonte",
         })
 
-    # glossário: variante fora do vocabulário controlado
-    baixo = texto.lower()
+    # glossário: variante fora do vocabulário controlado.
+    # Casa por PALAVRA INTEIRA (\b) — senão "JE" casaria dentro de "sujeita",
+    # "objeto" etc. (falso positivo). Só avisa se o termo preferido não aparece.
     for termo, variantes in glossario:
         for var in variantes:
-            if var and var.lower() in baixo and termo.lower() not in baixo:
+            if not var:
+                continue
+            if re.search(rf"\b{re.escape(var)}\b", texto, re.I) and not re.search(
+                rf"\b{re.escape(termo)}\b", texto, re.I
+            ):
                 if f"gl-{pid}-{var}" in ignorados:
                     break
                 notas.append({
                     "id": f"gl-{pid}-{var}", "pid": pid, "kind": "warn", "source": "det",
                     "label": "Glossário",
                     "body": f'"{var}" — o glossário da área usa <em>"{termo}"</em>.',
+                    "fixInstrucao": f'Substitua "{var}" por "{termo}", o termo preferido do glossário da área.',
                     "fixAction": "reescrever",
                 })
                 break
